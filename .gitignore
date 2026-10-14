@@ -1,8 +1,37 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
+build/
+
+# Environment (secrets!)
 .env
 .env.*
 !.env.example
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Test coverage
 coverage/
+
+# Drizzle temporary
+drizzle/meta/_journal.json.bak
+
+# Local data (if using local DB)
+pgdata/
+
 /MY_NOTES.md
