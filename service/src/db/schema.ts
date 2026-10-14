@@ -53,8 +53,9 @@ import {
  *
  * Months are stored as the first day of the UTC month (a real `date`), e.g. 2026-10-01.
  *
- * `updated_at` has no trigger: code that updates a row sets it (plans use $onUpdate; the usage
- * counters set it in the single UPDATE statement that changes them).
+ * `updated_at` has no trigger: code that updates a row sets it, always from the DATABASE clock
+ * (now()) so created_at/updated_at never disagree when the app server's clock drifts. Plans use
+ * $onUpdate(now()); the usage counters set it in the single UPDATE statement that changes them.
  */
 
 /** Owner key of predefined plans. Reserved: no account may use it as its id (see accounts). */
@@ -90,7 +91,7 @@ export const plans = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()
       .defaultNow()
-      .$onUpdate(() => new Date()),
+      .$onUpdate(() => sql`now()`),
   },
   (t) => [
     // Targets of the composite foreign keys below.
