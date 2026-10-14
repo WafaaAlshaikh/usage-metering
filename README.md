@@ -20,6 +20,16 @@ Prerequisites: Node 22+, Docker.
 
 On start the service applies the migrations and seeds the predefined plans (safe to repeat). `GET /health` returns `{"status":"ok"}`.
 
+## Run with Docker Compose
+
+    docker compose up --build
+
+This starts PostgreSQL and the service (the example client is added to this file once it exists). The service applies the migrations and seeds the predefined plans on start. Stop any local `npm run dev` first, because both use port 3000.
+
+    curl http://localhost:3000/health
+
+Settings have defaults inside `docker-compose.yml`; for local development without Docker copy `service/.env.example` to `service/.env`.
+
 ## Tests
 
     docker exec metering-db psql -U metering -d postgres -c "create database metering_test"
@@ -76,7 +86,7 @@ The database enforces: plan kinds, plan ownership (an account can only use prede
 - [x] Schema, migrations, predefined plans
 - [x] Rule evaluation (pure functions) with unit tests
 - [x] Database constraint tests
-- [ ] Docker Compose
+- [x] Docker Compose (service and database; client to be added)
 - [ ] Consume endpoint (transaction, locking, idempotency)
 - [ ] Accounts, users, plans API and API-key auth
 - [ ] Usage and history endpoints
