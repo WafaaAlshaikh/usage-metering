@@ -1,4 +1,5 @@
 import type { Db } from '../db/client';
+import { isUniqueViolation } from '../db/pgErrors';
 import type { RequestLogRow } from '../db/schema';
 import type { Limits, Rejection } from '../domain/decision';
 import { ConflictError, GoneError, NotFoundError } from '../domain/errors';
@@ -153,4 +154,19 @@ function replayOf(previous: RequestLogRow, userId: string, input: ConsumeInput):
       remaining: previous.userRemainingAfter,
     },
   };
+}
+
+/**
+ * Same as consume(), plus one retry for a rare race: the same requestId arriving on both sides of
+ * a month boundary locks different usage rows, so both transactions run in parallel and the second
+ * one hits UNIQUE (account_id, request_id). The transaction rolled back, so nothing was counted;
+ * running it again finds the first result and answers with a replay.
+ */
+export async function consumeWithRetry(db: Db, input: ConsumeInput): Promise<ConsumeResult> {
+  try {
+    return await consume(db, input);
+  } catch (err) {
+    if (isUniqueViolation(err, 'request_log_account_request_uq')) return consume(db, input);
+    throw err;
+  }
 }

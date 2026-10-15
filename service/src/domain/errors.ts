@@ -35,3 +35,9 @@ export class BadRequestError extends AppError {
     super(400, 'bad_request', message, details);
   }
 }
+
+export class UnauthorizedError extends AppError {
+  constructor(message = 'Missing or invalid API key') {
+    super(401, 'unauthorized', message);
+  }
+}

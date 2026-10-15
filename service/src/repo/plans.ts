@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, and, isNull, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { Executor } from '../db/client';
 import { accounts, plans, users } from '../db/schema';
@@ -15,6 +15,25 @@ export async function findPlansForUser(ex: Executor, userId: string) {
     .innerJoin(userPlan, eq(userPlan.id, users.userPlanId))
     .innerJoin(accountPlan, eq(accountPlan.id, accounts.accountPlanId))
     .where(eq(users.id, userId))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * A plan of the given kind that this account may assign: a predefined plan or one of its own.
+ * Another account's plan comes back as null, exactly like a plan that does not exist.
+ */
+export async function findAssignablePlan(ex: Executor, accountId: string, planId: string, kind: 'account' | 'user') {
+  const [row] = await ex
+    .select()
+    .from(plans)
+    .where(
+      and(
+        eq(plans.id, planId),
+        eq(plans.kind, kind),
+        or(isNull(plans.accountId), eq(plans.accountId, accountId)),
+      ),
+    )
     .limit(1);
   return row ?? null;
 }
