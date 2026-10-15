@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Usage Metering Demo</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1c2230; --muted:#667085; --line:#e4e7ec; --ok:#067647; --okbg:#ecfdf3; --no:#b42318; --nobg:#fef3f2; --accent:#2f5bea; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  header { display:flex; align-items:center; justify-content:space-between; padding:14px 24px; background:var(--card); border-bottom:1px solid var(--line); }
+  header h1 { font-size:17px; margin:0; } header small { color:var(--muted); }
+  main { display:grid; grid-template-columns: 380px 1fr; gap:16px; padding:16px 24px; max-width:1200px; margin:auto; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:16px; }
+  .card h2 { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:0 0 10px; }
+  button { font:inherit; padding:7px 12px; border:1px solid var(--line); border-radius:7px; background:#fff; cursor:pointer; }
+  button:hover { border-color:var(--accent); } button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button:disabled { opacity:.5; cursor:wait; }
+  .stack { display:flex; flex-direction:column; gap:8px; } .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  select, input { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:7px; min-width:0; }
+  input[type=number] { width:110px; } label { color:var(--muted); font-size:12px; }
+  table { width:100%; border-collapse:collapse; } th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:500; font-size:12px; } td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .bar { height:8px; background:var(--line); border-radius:4px; overflow:hidden; margin-top:6px; } .bar > i { display:block; height:100%; background:var(--accent); }
+  .big { font-size:22px; font-weight:600; } .muted { color:var(--muted); }
+  .dec { padding:8px 10px; border-radius:8px; margin-bottom:6px; border:1px solid var(--line); } .dec.ok { background:var(--okbg); } .dec.no { background:var(--nobg); }
+  .badge { font-weight:700; font-size:11px; letter-spacing:.04em; } .dec.ok .badge { color:var(--ok); } .dec.no .badge { color:var(--no); }
+</style>
+</head>
+<body>
+<header>
+  <div><h1>Usage Metering Demo</h1><small id="acct">starting…</small></div>
+  <button id="reset" title="Creates a brand-new demo account with a new API key">Reset demo</button>
+</header>
+<main>
+  <section>
+    <div class="card">
+      <h2>1 · Try the rules</h2>
+      <div class="stack">
+        <button data-scn="accepted">alice consumes 10 → accepted</button>
+        <button data-scn="user-limit">alice consumes 25 → user limit</button>
+        <button data-scn="account-limit">bob consumes 50 until the shared limit stops it</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>2 · Change a plan, ask again</h2>
+      <div class="stack">
+        <button data-scn="raise-basic-limit">Raise "Demo Basic" to 50 per request</button>
+        <button data-scn="switch-alice-premium">Switch alice to "Demo Premium"</button>
+        <div class="muted">Then repeat step 1. The client code is the same; only the plan changed.</div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Manual consume</h2>
+      <div class="row">
+        <select id="m-user"></select>
+        <input id="m-units" type="number" min="1" step="1" value="5">
+        <button class="primary" id="m-go">Consume</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Manual plan changes</h2>
+      <div class="stack">
+        <div class="row"><select id="s-user"></select><select id="s-plan"></select><button id="s-go">Assign</button></div>
+        <div class="row"><select id="e-plan"></select></div>
+        <div class="row">
+          <label>per month</label><input id="e-month" type="number" min="0" placeholder="no limit">
+          <label>per request</label><input id="e-req" type="number" min="1" placeholder="no limit">
+          <button id="e-go">Update</button>
+        </div>
+        <div class="muted">Empty field = no limit.</div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="card"><h2>Last action</h2><div id="last" class="muted">Nothing yet. Click a button on the left.</div></div>
+    <div class="card"><h2>Shared account allowance <span id="period" class="muted"></span></h2><div id="account"></div></div>
+    <div class="card"><h2>Users</h2><table><thead><tr><th>User</th><th>Plan</th><th class="num">Per month</th><th class="num">Per request</th><th class="num">Consumed</th><th class="num">Remaining</th></tr></thead><tbody id="users"></tbody></table></div>
+    <div class="card"><h2>Recent decisions (from /history)</h2><div id="history"></div></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (v) => (v === null || v === undefined ? '∞' : Number(v).toLocaleString());
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+let state = null;
+
+async function api(method, url, body) {
+  const res = await fetch(url, { method, headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(json?.error?.message ?? `HTTP ${res.status}`);
+  return json;
+}
+
+function decision(d) {
+  const why = d.accepted ? '' : ` — blocked by the <b>${esc(d.rejection.scope)}</b> rule <b>${esc(d.rejection.rule)}</b>`;
+  return `<div class="dec ${d.accepted ? 'ok' : 'no'}"><span class="badge">${d.accepted ? 'ACCEPTED' : 'REJECTED'}</span> ${esc(d.userId)} · ${fmt(d.units)} units${why}<br>
+    <small class="muted">remaining after: account ${fmt(d.account.remaining)}, ${esc(d.userId)} ${fmt(d.user.remaining)}${d.replayed ? ' · replayed' : ''}</small></div>`;
+}
+
+function fillSelect(el, items, label, value) {
+  const keep = el.value;
+  el.innerHTML = items.map((i) => `<option value="${esc(value(i))}">${esc(label(i))}</option>`).join('');
+  if ([...el.options].some((o) => o.value === keep)) el.value = keep;
+}
+
+function fillEditor() {
+  const p = state.plans.find((x) => x.id === $('e-plan').value);
+  if (!p) return;
+  $('e-month').value = p.monthlyAllowance ?? '';
+  $('e-req').value = p.maxUnitsPerRequest ?? '';
+}
+
+function render() {
+  $('acct').textContent = state.accountName;
+  $('period').textContent = '· ' + state.period + ' (UTC month)';
+  const a = state.account, lim = a.plan.monthlyAllowance;
+  const pct = lim ? Math.min(100, (a.consumed / lim) * 100) : 0;
+  $('account').innerHTML = `<div class="big">${fmt(a.remaining)} <span class="muted" style="font-size:14px">remaining</span></div>
+    <div class="muted">${fmt(a.consumed)} consumed of ${fmt(lim)} · plan <b>${esc(a.plan.name)}</b> · max ${fmt(a.plan.maxUnitsPerRequest)} per request</div>
+    <div class="bar"><i style="width:${pct}%"></i></div>`;
+  $('users').innerHTML = state.users.map((u) => `<tr><td>${esc(u.userId)}${u.deleted ? ' <small class="muted">(deleted)</small>' : ''}</td><td>${esc(u.plan.name)}</td>
+    <td class="num">${fmt(u.plan.monthlyAllowance)}</td><td class="num">${fmt(u.plan.maxUnitsPerRequest)}</td><td class="num">${fmt(u.consumed)}</td><td class="num"><b>${fmt(u.remaining)}</b></td></tr>`).join('');
+  $('history').innerHTML = state.history.length ? state.history.map(decision).join('') : '<span class="muted">No requests yet.</span>';
+
+  const active = state.users.filter((u) => !u.deleted);
+  fillSelect($('m-user'), active, (u) => u.userId, (u) => u.userId);
+  fillSelect($('s-user'), active, (u) => u.userId, (u) => u.userId);
+  fillSelect($('s-plan'), state.plans.filter((p) => p.kind === 'user'), (p) => p.name + (p.isPredefined ? ' (predefined)' : ''), (p) => p.id);
+  fillSelect($('e-plan'), state.plans.filter((p) => !p.isPredefined), (p) => `${p.name} (${p.kind})`, (p) => p.id);
+  fillEditor();
+}
+
+async function refresh() { state = await api('GET', '/api/state'); render(); }
+
+const buttons = () => document.querySelectorAll('button');
+async function run(action) {
+  buttons().forEach((b) => (b.disabled = true));
+  try {
+    const r = await action();
+    if (r) $('last').innerHTML = (r.note ? `<div class="dec">${esc(r.note)}</div>` : '') + (r.decisions ?? []).map(decision).join('');
+    await refresh();
+  } catch (e) {
+    $('last').innerHTML = `<div class="dec no"><span class="badge">ERROR</span> ${esc(e.message)}</div>`;
+  } finally {
+    buttons().forEach((b) => (b.disabled = false));
+  }
+}
+const num = (id) => ($(id).value.trim() === '' ? null : Number($(id).value));
+
+document.querySelectorAll('[data-scn]').forEach((b) => b.addEventListener('click', () => run(() => api('POST', `/api/scenario/${b.dataset.scn}`))));
+$('m-go').addEventListener('click', () => run(async () => ({ decisions: [await api('POST', '/api/consume', { userId: $('m-user').value, units: Number($('m-units').value) })] })));
+$('s-go').addEventListener('click', () => run(async () => {
+  await api('PUT', `/api/users/${encodeURIComponent($('s-user').value)}/plan`, { planId: $('s-plan').value });
+  return { decisions: [], note: `${$('s-user').value} now uses "${$('s-plan').selectedOptions[0].text}".` };
+}));
+$('e-go').addEventListener('click', () => run(async () => {
+  await api('PATCH', `/api/plans/${$('e-plan').value}`, { monthlyAllowance: num('e-month'), maxUnitsPerRequest: num('e-req') });
+  return { decisions: [], note: 'Plan updated. It applies to the next request.' };
+}));
+$('e-plan').addEventListener('change', fillEditor);
+$('reset').addEventListener('click', () => run(async () => {
+  await api('POST', '/api/reset');
+  return { decisions: [], note: 'New demo account created with a fresh API key and nothing consumed.' };
+}));
+
+refresh().catch((e) => ($('acct').textContent = 'error: ' + e.message));
+</script>
+</body>
+</html>

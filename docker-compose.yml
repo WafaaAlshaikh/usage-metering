@@ -32,7 +32,17 @@ services:
       timeout: 3s
       retries: 30
 
-  # The example client is added here when it is written.
+  client:
+    build: ./client
+    environment:
+      SERVICE_URL: http://service:3000
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-dev-admin-token}
+      PORT: "4000"
+    ports:
+      - "4000:4000"
+    depends_on:
+      service:
+        condition: service_healthy
 
 volumes:
   pgdata:

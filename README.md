@@ -114,6 +114,19 @@ The database enforces: plan kinds, plan ownership (an account can only use prede
 - Units are stored as 64-bit integers but handled as JavaScript numbers (exact up to 2^53).
 - All requests of one account serialize on that account's usage row (the shared allowance requires it). Measured in the performance section once available.
 
+## Example client
+
+A small web page (plain Node, no dependencies) that calls the service with an account's API key on behalf of three users. The browser only talks to the client's own server, so the API key never reaches it.
+
+    docker compose up --build
+    open http://localhost:4000
+
+On start the client creates a demo account: a small account plan (100 / month, 50 per request) and users `alice` and `carol` on "Demo Basic" (80 / 20) and `bob` on "Demo Premium" (500 / 50). **Reset demo** creates a new account with a new key (old demo accounts stay in the database).
+
+Walkthrough: (1) alice 10 is accepted; (2) alice 25 is rejected by her per-request limit; (3) bob's requests are rejected by the shared account allowance although he has his own allowance left; (4) raise "Demo Basic" to 50 per request or switch alice to "Demo Premium", repeat (2), and the outcome changes without any client change.
+
+Without Docker: run the service, then `cd client && node src/server.mjs` (set `SERVICE_URL` and `ADMIN_TOKEN` if they differ from the defaults).
+
 ## Status
 
 - [x] Schema, migrations, predefined plans
@@ -124,6 +137,6 @@ The database enforces: plan kinds, plan ownership (an account can only use prede
 - [x] API-key auth, error handling, account isolation tests
 - [x] Accounts, users, custom plans, plan assignment, archiving
 - [x] Usage and history endpoints (pagination, past months)
-- [ ] Example client
+- [x] Example client
 - [ ] Load tests (k6) and results
 - [ ] Full API reference
