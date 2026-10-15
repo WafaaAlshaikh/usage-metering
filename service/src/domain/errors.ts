@@ -41,3 +41,10 @@ export class UnauthorizedError extends AppError {
     super(401, 'unauthorized', message);
   }
 }
+
+/** Authenticated, but this thing may not be changed (e.g. a predefined plan). */
+export class ForbiddenError extends AppError {
+  constructor(code: string, message: string, details?: Record<string, unknown>) {
+    super(403, code, message, details);
+  }
+}

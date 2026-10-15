@@ -22,3 +22,17 @@ export async function findAccountByKeyHash(ex: Executor, apiKeyHash: string) {
   const [row] = await ex.select().from(accounts).where(eq(accounts.apiKeyHash, apiKeyHash)).limit(1);
   return row ?? null;
 }
+
+export async function updateAccountPlan(ex: Executor, accountId: string, plan: { id: string; ownerKey: string }) {
+  const [row] = await ex
+    .update(accounts)
+    .set({ accountPlanId: plan.id, accountPlanOwnerKey: plan.ownerKey })
+    .where(eq(accounts.id, accountId))
+    .returning();
+  return row!;
+}
+
+export async function findAccountById(ex: Executor, accountId: string) {
+  const [row] = await ex.select().from(accounts).where(eq(accounts.id, accountId)).limit(1);
+  return row ?? null;
+}
