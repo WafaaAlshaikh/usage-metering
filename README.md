@@ -77,6 +77,7 @@ The database enforces: plan kinds, plan ownership (an account can only use prede
 12. Each consume runs in one database transaction that locks the account usage row and then the user usage row (always in that order). The decision is made under the locks, so concurrent requests can never exceed an allowance. The cost: requests of one account are processed one after another.
 13. Plans are read after the locks are taken, so a decision uses the plans as they are at decision time, and the request log stores the limits that were applied.
 14. A user that does not exist in the calling account returns 404 (the same answer for another account's user, so nothing leaks). A soft-deleted user returns 410.
+15. API keys are random (256 bits), shown once at account creation, and only their SHA-256 hash is stored. A fast hash is enough because the key cannot be guessed, and it allows looking the account up through a unique index on every request (bcrypt-style salted hashes would not).
 
 ## Known limitations
 
@@ -91,8 +92,10 @@ The database enforces: plan kinds, plan ownership (an account can only use prede
 - [x] Rule evaluation (pure functions) with unit tests
 - [x] Database constraint tests
 - [x] Docker Compose (service and database; client to be added)
-- [ ] Consume endpoint (transaction, locking, idempotency)
-- [ ] Accounts, users, plans API and API-key auth
+- [x] Consume logic (transaction, locking, idempotency) with concurrency tests
+- [x] API key generation and account registration (service layer)
+- [ ] HTTP layer: API-key auth, error handling, routes
+- [ ] Plans API (custom plans, assignment)
 - [ ] Usage and history endpoints
 - [ ] Example client
 - [ ] Load tests (k6) and results
