@@ -10,7 +10,7 @@ TypeScript, Fastify, PostgreSQL, Drizzle ORM, Zod, Vitest, k6, Docker Compose.
 
 ## Run locally (current state)
 
-Prerequisites: Node 22+, Docker.
+Prerequisites: Node 22.12+ (tested on 24), Docker.
 
     docker run --name metering-db -e POSTGRES_USER=metering -e POSTGRES_PASSWORD=metering -e POSTGRES_DB=metering -p 5434:5432 -d postgres:16-alpine
     cd service
@@ -41,6 +41,27 @@ Integration tests run against a real PostgreSQL database whose name must end in 
 ## How a request is decided
 
 Two rule types exist for both account plans and user plans: a monthly allowance (units per UTC calendar month) and a maximum per request. A request is accepted only if every rule of both plans allows the full amount; a rejection consumes nothing. Accepted units are added to both the user's and the account's usage for the current UTC month.
+
+## Endpoints (summary)
+
+All routes except `GET /health` and `POST /accounts` need the header `x-api-key`. `POST /accounts` needs `x-admin-token` when `ADMIN_TOKEN` is set.
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/accounts` | Create an account; returns the API key once |
+| GET | `/account` | Current account and its plan |
+| PUT | `/account/plan` | Change the account plan |
+| POST | `/users` | Register a user (re-activates a deleted one) |
+| GET | `/users`, `/users/:id` | List (cursor pagination) / inspect with plan |
+| PUT | `/users/:id/plan` | Change a user's plan |
+| DELETE | `/users/:id` | Soft delete |
+| GET | `/plans`, `/plans/:id` | Predefined plans and your own (`?kind=`, `?includeArchived=`) |
+| POST / PATCH / DELETE | `/plans`, `/plans/:id` | Create / edit / archive a custom plan |
+| POST | `/consume` | Decide and record one request |
+| GET | `/usage` | Consumed and remaining, account plus a page of users (`?period=YYYY-MM`, `?limit`, `?after`) |
+| GET | `/history` | Request outcomes, newest first (`?userId`, `?period`, `?accepted`, `?limit`, `?cursor`) |
+
+Errors always look like `{ "error": { "code", "message", "details"? } }`. A rejected consume is HTTP 200 with `accepted: false` and the rule that blocked it.
 
 ## Predefined plans
 
@@ -78,6 +99,13 @@ The database enforces: plan kinds, plan ownership (an account can only use prede
 13. Plans are read after the locks are taken, so a decision uses the plans as they are at decision time, and the request log stores the limits that were applied.
 14. A user that does not exist in the calling account returns 404 (the same answer for another account's user, so nothing leaks). A soft-deleted user returns 410.
 15. API keys are random (256 bits), shown once at account creation, and only their SHA-256 hash is stored. A fast hash is enough because the key cannot be guessed, and it allows looking the account up through a unique index on every request (bcrypt-style salted hashes would not).
+16. Predefined plans are read-only (403 `plan_read_only`). Another account's plan is a 404, the same answer as a plan that does not exist.
+17. "Deleting" a custom plan archives it. Current users keep it, nobody new can get it, and its name stays reserved.
+18. Any account may pick any predefined plan for itself or its users; billing is out of scope.
+19. `/usage` computes `remaining` from the plan limits in force now, also for past months. The limits that applied at each decision are in `/history`.
+20. A deleted user with usage in the requested month is still listed in `/usage` (marked `deleted`) so users add up to the account total; one without usage is hidden.
+21. Reads take no locks, so they never slow consumes down. Numbers are as of the moment each query ran.
+22. History cursors keep `created_at` as microsecond text plus the row id, so pages never skip or repeat a row.
 
 ## Known limitations
 
@@ -92,11 +120,10 @@ The database enforces: plan kinds, plan ownership (an account can only use prede
 - [x] Rule evaluation (pure functions) with unit tests
 - [x] Database constraint tests
 - [x] Docker Compose (service and database; client to be added)
-- [x] Consume logic (transaction, locking, idempotency) with concurrency tests
-- [x] API key generation and account registration (service layer)
-- [ ] HTTP layer: API-key auth, error handling, routes
-- [ ] Plans API (custom plans, assignment)
-- [ ] Usage and history endpoints
+- [x] Consume (transaction, locking, idempotency) with concurrency tests
+- [x] API-key auth, error handling, account isolation tests
+- [x] Accounts, users, custom plans, plan assignment, archiving
+- [x] Usage and history endpoints (pagination, past months)
 - [ ] Example client
 - [ ] Load tests (k6) and results
 - [ ] Full API reference
