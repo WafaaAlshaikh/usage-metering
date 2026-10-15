@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import type { Config } from './config';
 import type { Db } from './db/client';
 import { registerErrorHandler } from './http/errorHandler';
-import { registerRoutes } from './http/routes/routes';
+import { registerRoutes } from './http/routes/index';
 
 export interface AppDeps {
   db: Db;
