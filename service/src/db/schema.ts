@@ -295,4 +295,6 @@ export const requestLog = pgTable(
 export type Plan = typeof plans.$inferSelect;
 export type Account = typeof accounts.$inferSelect;
 export type User = typeof users.$inferSelect;
+export type AccountUsage = typeof accountUsage.$inferSelect;
+export type UserUsage = typeof userUsage.$inferSelect;
 export type RequestLogRow = typeof requestLog.$inferSelect;
