@@ -6,6 +6,8 @@ import { accountsPublicRoutes, accountRoutes } from './accounts';
 import { consumeRoutes } from './consume';
 import { usersRoutes } from './users';
 import { plansRoutes } from './plans';
+import { usageRoutes } from './usage';
+import { historyRoutes } from './history';
 
 export function registerRoutes(app: FastifyInstance, deps: { db: Db; config: Config }): void {
   const { db, config } = deps;
@@ -19,5 +21,7 @@ export function registerRoutes(app: FastifyInstance, deps: { db: Db; config: Con
     consumeRoutes(authed, { db });
     accountRoutes(authed, { db });
     plansRoutes(authed, { db });
+    usageRoutes(authed, { db });
+    historyRoutes(authed, { db });
   });
 }
