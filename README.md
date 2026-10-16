@@ -59,7 +59,7 @@ Load tested with k6 on a laptop (6 cores, shared by k6, the service and PostgreS
 
 Two rule types exist for both account plans and user plans: a monthly allowance (units per UTC calendar month) and a maximum per request. A request is accepted only if every rule of both plans allows the full amount; a rejection consumes nothing. Accepted units are added to both the user's and the account's usage for the current UTC month.
 
-## Endpoints (summary)
+<!-- ## Endpoints (summary)
 
 All routes except `GET /health` and `POST /accounts` need the header `x-api-key`. `POST /accounts` needs `x-admin-token` when `ADMIN_TOKEN` is set.
 
@@ -78,7 +78,144 @@ All routes except `GET /health` and `POST /accounts` need the header `x-api-key`
 | GET | `/usage` | Consumed and remaining, account plus a page of users (`?period=YYYY-MM`, `?limit`, `?after`) |
 | GET | `/history` | Request outcomes, newest first (`?userId`, `?period`, `?accepted`, `?limit`, `?cursor`) |
 
-Errors always look like `{ "error": { "code", "message", "details"? } }`. A rejected consume is HTTP 200 with `accepted: false` and the rule that blocked it.
+Errors always look like `{ "error": { "code", "message", "details"? } }`. A rejected consume is HTTP 200 with `accepted: false` and the rule that blocked it. -->
+
+## API reference
+
+Base URL `http://localhost:3000`. All bodies are JSON. Every route except `GET /health` and `POST /accounts` needs the header `x-api-key: <key>`. `POST /accounts` needs `x-admin-token: <ADMIN_TOKEN>` when that variable is set (the Compose file sets `dev-admin-token`).
+
+The examples use `curl` (on Windows PowerShell write `curl.exe`, and put JSON in a here-string or escape the quotes).
+
+### Get an API key
+
+```bash
+curl -s -X POST localhost:3000/accounts \
+  -H 'content-type: application/json' -H 'x-admin-token: dev-admin-token' \
+  -d '{"name":"Acme"}'
+```
+
+```json
+{ "id": "…", "name": "Acme", "apiKeyPrefix": "mk_5Zq1a", "planId": "…", "createdAt": "…", "apiKey": "mk_…" }
+```
+
+The raw `apiKey` is shown **once**; only its SHA-256 hash is stored. The account starts on the predefined `Starter` plan; pass `"planName":"Pro"` to start on another predefined account plan. The key identifies the calling account on every later request, so an account can only see and change its own data.
+
+```bash
+KEY=mk_...   # paste the key
+```
+
+### Users
+
+```bash
+# register (default plan: Basic; or pass a planId of a predefined user plan or one of your own)
+curl -s -X POST localhost:3000/users -H "x-api-key: $KEY" -H 'content-type: application/json' \
+  -d '{"externalId":"alice"}'
+# → 201 {"userId":"alice","planId":"…","createdAt":"…","reactivated":false}
+
+curl -s "localhost:3000/users?limit=50" -H "x-api-key: $KEY"        # {"users":[…],"nextCursor":null|"<last userId>"}
+curl -s localhost:3000/users/alice -H "x-api-key: $KEY"             # user with its current plan and limits
+curl -s -X PUT localhost:3000/users/alice/plan -H "x-api-key: $KEY" -H 'content-type: application/json' \
+  -d '{"planId":"<plan id>"}'
+curl -s -X DELETE localhost:3000/users/alice -H "x-api-key: $KEY"   # 204, soft delete
+```
+
+Next page of `/users`: `?after=<nextCursor>`. Registering an existing active `externalId` is a 409 `user_exists`; registering a deleted one re-activates it with its old usage (`reactivated: true`).
+
+### Plans
+
+A plan has a `kind` (`account` or `user`), a `name`, and two optional limits: `monthlyAllowance` and `maxUnitsPerRequest`. `null` means "no limit".
+
+```bash
+curl -s "localhost:3000/plans?kind=user" -H "x-api-key: $KEY"       # predefined + your own (?includeArchived=true to see archived)
+curl -s -X POST localhost:3000/plans -H "x-api-key: $KEY" -H 'content-type: application/json' \
+  -d '{"kind":"user","name":"Gold","monthlyAllowance":2000,"maxUnitsPerRequest":100}'
+curl -s -X PATCH localhost:3000/plans/<id> -H "x-api-key: $KEY" -H 'content-type: application/json' \
+  -d '{"maxUnitsPerRequest":50}'                                    # missing field = unchanged, null = remove the limit
+curl -s -X DELETE localhost:3000/plans/<id> -H "x-api-key: $KEY"    # archives it
+curl -s -X PUT localhost:3000/account/plan -H "x-api-key: $KEY" -H 'content-type: application/json' \
+  -d '{"planId":"<account plan id>"}'
+curl -s localhost:3000/account -H "x-api-key: $KEY"                 # the account and its current plan
+```
+
+Predefined plans are read-only (403 `plan_read_only`). Another account's plan behaves like a plan that does not exist (404). Several users can share one plan; each keeps its own usage.
+
+### Consume
+
+```bash
+curl -s -X POST localhost:3000/consume -H "x-api-key: $KEY" -H 'content-type: application/json' \
+  -d '{"userId":"alice","units":10,"requestId":"doc-8841"}'
+```
+
+```json
+{
+  "requestId": "doc-8841", "userId": "alice", "units": 10,
+  "accepted": true, "replayed": false, "period": "2026-10", "rejection": null,
+  "account": { "planId": "…", "limits": { "monthlyAllowance": 10000, "maxUnitsPerRequest": 100 }, "remaining": 9990 },
+  "user":    { "planId": "…", "limits": { "monthlyAllowance": 1000,  "maxUnitsPerRequest": 20 },  "remaining": 990 }
+}
+```
+
+`units` must be a positive whole number (at most 10^12). A rejection is still HTTP **200**: the call worked and the decision is in the body.
+
+```json
+{ "accepted": false, "rejection": { "scope": "user", "rule": "max_per_request" }, "…": "…" }
+```
+
+`scope` is `account` or `user`; `rule` is `max_per_request` or `monthly_allowance`. A rejection consumes nothing, and `remaining` is what is left after the decision. The `limits` shown are the ones the decision was made under.
+
+### Usage and history
+
+```bash
+curl -s "localhost:3000/usage?period=2026-09&limit=100" -H "x-api-key: $KEY"
+curl -s "localhost:3000/history?accepted=false&userId=alice&limit=20" -H "x-api-key: $KEY"
+```
+
+`/usage` (default: current UTC month) returns the account's `consumed`/`remaining` and a page of its users (`?limit`, `?after=<last userId>`; the account totals repeat on every page). `/history` lists decisions newest first, filters `userId`, `period`, `accepted`, pages with `?cursor=<nextCursor>`, and every row carries the plans and limits that applied at that moment.
+
+### Errors
+
+Always `{ "error": { "code": "…", "message": "…", "details": … } }`.
+
+| HTTP | code | When |
+|---|---|---|
+| 400 | `validation_error` / `bad_request` | Bad body, query, period, cursor, or malformed JSON |
+| 401 | `unauthorized` | Missing or wrong API key (or admin token); same answer for both |
+| 403 | `plan_read_only` | Editing or archiving a predefined plan |
+| 404 | `not_found` | Unknown route, user, or plan (including other accounts' users and plans) |
+| 409 | `idempotency_conflict` | Same `requestId` with a different user or units |
+| 409 | `user_exists`, `plan_archived`, `plan_name_taken` | Conflicts on registration, assignment, naming |
+| 410 | `gone` | The user was deleted |
+| 500 | `internal_error` | A bug; details are logged, never returned |
+
+## Retries and idempotency
+
+`requestId` is the idempotency key, unique per account. Send the same `requestId` again (same user, same units) after a timeout or a network error and you get the original decision back with `replayed: true`; the units are counted once, even if retries arrive at the same moment. A rejected request is replayed as the same rejection.
+
+Reusing a `requestId` for a different user or amount is a client bug, not a retry, and returns 409 `idempotency_conflict`. Use a new `requestId` for every new action; a request that was rejected is not "retried" by sending it again with the same id.
+
+How it stays correct: each consume is one database transaction that locks the account's usage row and then the user's (always in that order, so requests cannot deadlock), checks the `requestId`, reads the plans, decides, updates both counters, and writes the log row. Either everything is stored or nothing is. The database also enforces `UNIQUE (account_id, request_id)` as a last line of defence; the rare race where the same `requestId` arrives on both sides of a month boundary is handled by one internal re-run that finds and replays the first result.
+
+## Changing plans and rules
+
+- An edit (`PATCH /plans/:id`) is a single `UPDATE`; the next consume that takes its locks sees the new limits. Editing a custom plan affects every account or user assigned to it, with no redeploy and no client change.
+- Switching a plan (`PUT /users/:id/plan`, `PUT /account/plan`) keeps the usage already consumed: counters belong to the user/account and the month, not to the plan. It never gives a fresh allowance.
+- If an allowance is reduced below what was already consumed, `remaining` shows 0 and further consumption at that level is rejected until the next month or until the allowance is raised.
+- History is never rewritten: each logged decision stores the plan ids and limits it was made under.
+- Archiving a plan ("deleting" it) leaves current users on it, keeps their history, and blocks assigning it to anyone new.
+
+### Rules and how they combine
+
+Two rule types, for both account and user plans: `monthly_allowance` (units per UTC calendar month) and `max_per_request`. A request is accepted only if **all four** checks pass (user and account, each with both rules). The reported reason is the first failing check in this order: user per-request, account per-request, user monthly, account monthly. No further rule types were added: a reliable, well-explained core was preferred. A new rule would be one more pure check in `domain/rules.ts` (covered by unit tests without a database) plus a column on `plans` and on the logged limits.
+
+## Main design decisions
+
+- **Counters instead of summing the log.** `account_usage` and `user_usage` hold consumed units per month, so a decision touches two small rows however much history exists. The log is the audit trail and the idempotency record.
+- **Correctness through row locks.** Locking the account counter then the user counter inside one transaction makes concurrent decisions exact. The price is that requests of one account run one after another (see Performance); different accounts run in parallel.
+- **A pure decision function.** `domain/rules.ts` has no database or clock, so every rule combination is unit tested directly.
+- **The database enforces ownership.** Plan kind, plan ownership, and "this user belongs to this account" are foreign keys and checks, so a bug in the service cannot create cross-account data. Tests attack these constraints directly.
+- **Layers.** `http/` (routes, validation, auth, error mapping) → `services/` (transactions and business flow) → `repo/` (queries) → `domain/` (pure rules, errors, periods).
+- **API keys:** 256-bit random, only the SHA-256 hash stored, looked up through a unique index on every request.
+
 
 ## Predefined plans
 
@@ -126,10 +263,16 @@ The database enforces: plan kinds, plan ownership (an account can only use prede
 
 ## Known limitations
 
-- One API key per account; no rotation or multiple keys.
-- Accounts cannot be deleted.
-- Units are stored as 64-bit integers but handled as JavaScript numbers (exact up to 2^53).
-- All requests of one account serialize on that account's usage row (the shared allowance requires it). Measured in the performance section once available.
+- One API key per account; no rotation or revocation.
+- `POST /accounts` is open when `ADMIN_TOKEN` is not set (convenient locally; always set it elsewhere). Accounts cannot be deleted or renamed.
+- Any account may pick any predefined plan; there is no billing or approval.
+- No rate limiting on the API itself, and request history is kept forever (no retention or archiving).
+- Units are 64-bit in the database but JavaScript numbers in the service (exact up to 2^53); requests are capped at 10^12 units.
+- All requests of one account serialise on its usage row. That is required for an exact shared allowance and was measured (see Performance).
+- The month of a request comes from the service's clock (UTC); other timestamps come from the database clock. With several service instances, clock drift could assign a request near midnight UTC to the neighbouring month.
+- `/usage` computes `remaining` from the current plan limits, also for past months; `/history` has the limits of the time.
+- Reads are not locked: usage numbers are as of the moment each query ran.
+- Performance numbers are single runs on a shared laptop.
 
 ## Example client
 
