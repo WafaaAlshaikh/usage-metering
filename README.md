@@ -38,6 +38,23 @@ Settings have defaults inside `docker-compose.yml`; for local development withou
 
 Integration tests run against a real PostgreSQL database whose name must end in `_test` (they wipe it). Override with `TEST_DATABASE_URL`.
 
+
+## Performance
+
+Load tested with k6 on a laptop (6 cores, shared by k6, the service and PostgreSQL). Full method, commands, and numbers are in [`perf/README.md`](perf/README.md).
+
+| Scenario (20 VUs, 30 s) | consumes/s | p95 latency |
+|---|---|---|
+| One hot account, before optimisation | 32 | 1701 ms |
+| One hot account, after | 40 | 759 ms |
+| 50 accounts, before | 59 | 426 ms |
+| 50 accounts, after | 82 | 319 ms |
+
+- Requests of one account are serialised on its shared usage counter. That is what keeps the shared allowance exact under concurrency; requests of different accounts run in parallel.
+- The optimisation removed round trips (about 10 queries per consume down to 7) without changing any decision.
+- After every run, `perf/verify.mjs` confirmed that the account counter equals the sum of the user counters and the sum of accepted requests in the log.
+- Concurrency is also covered by automated tests (200 parallel requests never exceed an allowance; 20 parallel retries count once).
+
 ## How a request is decided
 
 Two rule types exist for both account plans and user plans: a monthly allowance (units per UTC calendar month) and a maximum per request. A request is accepted only if every rule of both plans allows the full amount; a rejection consumes nothing. Accepted units are added to both the user's and the account's usage for the current UTC month.
@@ -138,5 +155,5 @@ Without Docker: run the service, then `cd client && node src/server.mjs` (set `S
 - [x] Accounts, users, custom plans, plan assignment, archiving
 - [x] Usage and history endpoints (pagination, past months)
 - [x] Example client
-- [ ] Load tests (k6) and results
+- [x] Load tests (k6) and results
 - [ ] Full API reference
