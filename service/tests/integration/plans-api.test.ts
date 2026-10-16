@@ -169,6 +169,26 @@ describe('assigning plans', () => {
     const userPlan = await newPlan(a.apiKey);
     expect((await call(a.apiKey, 'PUT', '/account/plan', { planId: userPlan.id })).statusCode).toBe(404);
   });
+
+    it('users sharing one plan keep separate usage, and a plan edit reaches both', async () => {
+    const a = await newAccount('Shared');
+    const shared = await newPlan(a.apiKey, { monthlyAllowance: 100, maxUnitsPerRequest: 100 });
+    await call(a.apiKey, 'POST', '/users', { externalId: 'u1', planId: shared.id });
+    await call(a.apiKey, 'POST', '/users', { externalId: 'u2', planId: shared.id });
+
+    expect((await consume(a.apiKey, 'u1', 80)).json()).toMatchObject({ accepted: true, user: { remaining: 20 } });
+    // u2 has the same plan definition but its own 100 units
+    expect((await consume(a.apiKey, 'u2', 80)).json()).toMatchObject({ accepted: true, user: { remaining: 20 } });
+    // u1 cannot borrow u2's allowance
+    expect((await consume(a.apiKey, 'u1', 30)).json()).toMatchObject({
+      accepted: false,
+      rejection: { scope: 'user', rule: 'monthly_allowance' },
+    });
+
+    await call(a.apiKey, 'PATCH', `/plans/${shared.id}`, { monthlyAllowance: 200 });
+    expect((await consume(a.apiKey, 'u2', 30)).json()).toMatchObject({ accepted: true, user: { remaining: 90 } }); // 200 - 80 - 30
+  });
+  
 });
 
 describe('archiving', () => {

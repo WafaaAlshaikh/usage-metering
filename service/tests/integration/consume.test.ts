@@ -178,6 +178,19 @@ describe('months', () => {
       ['2026-11', 10],
     ]);
   });
+
+    it('the same requestId on both sides of a month boundary is never counted twice', async () => {
+    const acc = await createAccount(t.db, limits(100, 50));
+    await createUser(t.db, acc, 'u1', limits(100, 50));
+    await Promise.allSettled([
+      ask(acc, 'u1', 5, { requestId: 'edge', now: new Date('2026-10-31T23:59:59Z') }),
+      ask(acc, 'u1', 5, { requestId: 'edge', now: new Date('2026-11-01T00:00:00Z') }),
+    ]);
+    // Either the second call replays the first, or it hits UNIQUE(account_id, request_id) and rolls back.
+    expect(await logCount(acc)).toBe(1);
+    expect(await accountConsumed(acc)).toBe(5);
+  });
+  
 });
 
 describe('users', () => {

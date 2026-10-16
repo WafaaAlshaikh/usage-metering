@@ -21,5 +21,5 @@ export default function (fixtures) {
 }
 
 export function handleSummary(data) {
-  return summarize(data, __ENV.RESULT || 'hot-account');
+  return summarize(data, __ENV.RESULT || 'many-accounts');
 }

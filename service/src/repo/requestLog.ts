@@ -12,7 +12,9 @@ export async function findByRequestId(ex: Executor, accountId: string, requestId
 }
 
 export async function insertRequestLog(ex: Executor, row: typeof requestLog.$inferInsert): Promise<void> {
-  await ex.insert(requestLog).values(row);
+  // clock_timestamp(), not now(): now() is the transaction START (before waiting for the lock),
+  // so history order could differ from decision order under contention.
+  await ex.insert(requestLog).values({ ...row, createdAt: sql`clock_timestamp()` });
 }
 
 export interface HistoryFilter {

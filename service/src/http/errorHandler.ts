@@ -20,6 +20,16 @@ export function registerErrorHandler(app: FastifyInstance): void {
     if (statusCode && statusCode >= 400 && statusCode < 500) {
       return reply.status(statusCode).send(body('bad_request', err.message));
     }
+        // Overload: pool exhausted, lock wait or statement timed out. Safe to retry with the same
+    // requestId, because consume is idempotent.
+    const e = err as { code?: string; cause?: { code?: string } };
+    const pgCode = e.code ?? e.cause?.code;
+    if (pgCode === '55P03' || pgCode === '57014' || /timeout exceeded when trying to connect/.test(err.message)) {
+      return reply
+        .status(503)
+        .header('retry-after', '1')
+        .send(body('busy', 'Service is busy, retry with the same requestId'));
+    }
     // Anything else is our bug: log it, never leak internals.
     req.log.error({ err }, 'unhandled error');
     return reply.status(500).send(body('internal_error', 'Internal server error'));

@@ -61,8 +61,9 @@ export function summarize(data, name) {
   const dur = data.metrics['http_req_duration{name:consume}'];
   const t = dur ? dur.values : data.metrics.http_req_duration.values;
   const n = data.metrics.iterations.values.count;
-  const secs = data.state.testRunDurationMs / 1000;
-  const text = `\n${name}: ${n} consumes, ${(n / secs).toFixed(0)} consumes/s (whole run ${secs.toFixed(0)}s)
+  // const secs = data.state.testRunDurationMs / 1000;
+  const secs = parseInt(__ENV.DURATION || '30', 10);
+  const text = `\n${name}: ${n} consumes, ${(n / secs).toFixed(0)} consumes/s (over ${secs}s)
 latency ms (consume only): avg ${t.avg.toFixed(1)}  p50 ${t.med.toFixed(1)}  p95 ${t['p(95)'].toFixed(1)}  p99 ${t['p(99)'].toFixed(1)}  max ${t.max.toFixed(1)}
 failed: ${(data.metrics.http_req_failed.values.rate * 100).toFixed(2)}%\n`;
   return { [`perf/results/${name}.json`]: JSON.stringify(data, null, 2), stdout: text };

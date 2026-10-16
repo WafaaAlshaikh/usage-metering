@@ -48,7 +48,8 @@ const limitsOf = (plan: { monthlyAllowance: number | null; maxUnitsPerRequest: n
  *
  * One database transaction:
  *   1. find the user inside the calling account (404 / 410 otherwise)
- *   2. lock account counter -> user counter (creating this month's rows only if missing) *   3. look the requestId up (after the locks, so identical concurrent requests queue up
+ *   2. lock account counter -> user counter (creating this month's rows only if missing) 
+ *   3. look the requestId up (after the locks, so identical concurrent requests queue up
  *      and the later ones see the earlier one's result)
  *   4. read both plans (after the locks, so the decision uses the plans as they are now)
  *   5. evaluate the rules (pure function)

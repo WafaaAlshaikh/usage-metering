@@ -16,36 +16,35 @@ export interface UsageInput {
   after?: string | undefined;
 }
 
-/**
- * Consumed and remaining for the account and one page of its users. Reads are not locked, so
- * they never slow consumes down; the numbers are as of the moment each query ran.
- * `remaining` always uses the plan limits in force NOW, also for past months (the limits that
- * applied at each decision are in /history).
- */
 export async function getUsage(db: Db, account: Account, input: UsageInput) {
-  const accountPlan = await findPlanById(db, account.accountPlanId);
-  if (!accountPlan) throw new Error('account plan could not be loaded');
+  return db.transaction(
+    async (tx) => {
+      const accountPlan = await findPlanById(tx, account.accountPlanId);
+      if (!accountPlan) throw new Error('account plan could not be loaded');
 
-  const accountConsumed = await getAccountConsumed(db, account.id, input.periodStart);
-  const rows = await listUserUsage(db, account.id, input.periodStart, input.limit, input.after);
-  const page = rows.slice(0, input.limit);
+      const accountConsumed = await getAccountConsumed(tx, account.id, input.periodStart);
+      const rows = await listUserUsage(tx, account.id, input.periodStart, input.limit, input.after);
+      const page = rows.slice(0, input.limit);
 
-  return {
-    account: {
-      plan: accountPlan,
-      consumed: accountConsumed,
-      remaining: remainingAllowance(limitsOf(accountPlan), accountConsumed),
-    },
-    users: page.map((r) => {
-      const consumed = r.consumed ?? 0;
       return {
-        externalId: r.user.externalId,
-        deleted: r.user.deletedAt !== null,
-        plan: r.plan,
-        consumed,
-        remaining: remainingAllowance(limitsOf(r.plan), consumed),
+        account: {
+          plan: accountPlan,
+          consumed: accountConsumed,
+          remaining: remainingAllowance(limitsOf(accountPlan), accountConsumed),
+        },
+        users: page.map((r) => {
+          const consumed = r.consumed ?? 0;
+          return {
+            externalId: r.user.externalId,
+            deleted: r.user.deletedAt !== null,
+            plan: r.plan,
+            consumed,
+            remaining: remainingAllowance(limitsOf(r.plan), consumed),
+          };
+        }),
+        nextCursor: rows.length > input.limit ? page[page.length - 1]!.user.externalId : null,
       };
-    }),
-    nextCursor: rows.length > input.limit ? page[page.length - 1]!.user.externalId : null,
-  };
+    },
+    { isolationLevel: 'repeatable read', accessMode: 'read only' },
+  );
 }

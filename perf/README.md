@@ -17,25 +17,47 @@ Load tests for `POST /consume` with [k6](https://k6.io), plus a correctness chec
 Fixtures are created in `setup()` with very large limits, so no request is rejected by the rules and the measurement is about throughput and latency, not about the decisions. Every request has a unique `requestId`. Only `/consume` calls are measured (tagged `name:consume`); the setup traffic is excluded.
 
 `verify.mjs` runs after each test. For every account created by the tests (`perf-*`) it checks that
+
 `account_usage = sum(user_usage) = sum(units of accepted request_log rows)`.
+
 If concurrent requests had lost or double-counted a unit, this would fail.
 
 ## How to reproduce
 
 Run everything from the repository root.
 
-    # quiet logs (per-request logging distorts the numbers)
-    $env:LOG_LEVEL = "warn"            # PowerShell; use LOG_LEVEL=warn on bash
-    docker compose up -d --build
-    Remove-Item Env:LOG_LEVEL
+**Recommended**
 
-    # clean slate (deletes ALL data, including the demo account)
-    docker compose exec -T db psql -U metering -d metering -c "truncate request_log, user_usage, account_usage, users, accounts, plans cascade;"
-    docker compose restart service client      # re-seeds the predefined plans and the demo
+No k6 install needed: run k6 in Docker, inside the Compose network. Results were the same as with k6 installed on the host (series B and C below).
 
-    k6 run -e RESULT=my-hot  perf/k6/consume-hot-account.js
-    k6 run -e RESULT=my-many perf/k6/consume-many-accounts.js
-    node perf/verify.mjs
+```powershell
+docker run --rm -i --network usage-metering_default -v "${PWD}:/work" -w /work `
+  -e BASE_URL=http://service:3000 grafana/k6 run perf/k6/consume-hot-account.js
+
+docker run --rm -i --network usage-metering_default -v "${PWD}:/work" -w /work `
+  -e BASE_URL=http://service:3000 grafana/k6 run perf/k6/consume-many-accounts.js
+
+node perf/verify.mjs
+```
+
+`usage-metering_default` is the Compose network; check with `docker network ls`. `verify.mjs` checks every `perf-*` account ever created, so the account count grows with each run unless you truncate as shown below.
+
+To reproduce the host-based runs, k6 must be installed locally:
+
+```powershell
+# Quiet logs (per-request logging distorts the numbers)
+$env:LOG_LEVEL = "warn"
+docker compose up -d --build
+Remove-Item Env:LOG_LEVEL
+
+# Clean slate (deletes ALL data, including the demo account)
+docker compose exec -T db psql -U metering -d metering -c "truncate request_log, user_usage, account_usage, users, accounts, plans cascade;"
+docker compose restart service client  # Re-seeds the predefined plans and the demo
+
+k6 run -e RESULT=my-hot perf/k6/consume-hot-account.js
+k6 run -e RESULT=my-many perf/k6/consume-many-accounts.js
+node perf/verify.mjs
+```
 
 Options: `-e VUS=40`, `-e DURATION=60s`, `-e ACCOUNTS=100`, `-e BASE_URL=...`, `-e ADMIN_TOKEN=...`. Results are written to `perf/results/<RESULT>.json`.
 
@@ -45,23 +67,46 @@ Laptop, AMD Ryzen 5 4500U (6 cores), 7.4 GB RAM, Windows 11, Docker Desktop (WSL
 
 ## Results
 
+### Series A: k6 on the host (through Docker Desktop's port forwarding)
+
 | Run | consumes/s | p50 | p95 | p99 |
-|---|---|---|---|---|
+|---|---:|---:|---:|---:|
 | baseline, hot account | 32 | 134 ms | 1701 ms | 2219 ms |
 | baseline, 50 accounts | 59 | 247 ms | 426 ms | 529 ms |
 | after optimisation 1, hot account | 40 | 509 ms | 759 ms | 1485 ms |
 | after optimisation 1, 50 accounts | 82 | 170 ms | 319 ms | 526 ms |
 | after optimisation 1, hot, `DB_POOL_MAX=10` | 37 | 482 ms | 777 ms | 1221 ms |
 
+### Series B: k6 inside the Compose network, current code (default log level)
+
+| Run | consumes | consumes/s (over the 30 s scenario) | p50 | p95 | p99 | max |
+|---|---:|---:|---:|---:|---:|---:|
+| hot account, 20 VUs | 2141 | ~71 | 253 ms | 542 ms | 916 ms | 1385 ms |
+| 50 accounts, 20 VUs | 6252 | ~208 | 87 ms | 145 ms | 286 ms | 490 ms |
+
+### Series C: k6 installed on the host, current code (default log level)
+
+| Run | consumes | consumes/s | p50 | p95 | p99 | max |
+|---|---:|---:|---:|---:|---:|---:|
+| hot account, 20 VUs | 2153 | ~72 | 264 ms | 492 ms | 722 ms | 957 ms |
+
+Series B and C give the same result, so where k6 runs (host or inside the Compose network) does not matter here. Series A is about 2x slower for the same decision code, and we did not identify why (possible factors: laptop power mode, Docker/WSL resources, background load, state of the database); we did not investigate it. **Compare runs only within a series (one session).**
+
 Correctness after every run: `verify.mjs` printed OK (account counter = sum of user counters = sum of accepted log rows).
 
 ## What we learned
 
 1. **The hot account is the bottleneck by design.** A consume must read and update the shared account counter without another request doing the same at that moment, otherwise the shared allowance could be exceeded. So requests of one account run one after another, which shows up as a long latency tail (baseline p95 1.7 s vs 0.4 s with many accounts). Requests of different accounts do not block each other.
+
 2. **The disk was not the problem.** A standalone commit took 5 to 8 ms on this machine, which cannot explain the baseline. During the runs the service and the database each used about one core: the time went into the number of round trips per request.
+
 3. **Optimisation 1: fewer queries per consume, same decisions.** The usage rows for a month used to be created with two INSERTs on every request; now they are created only by the first request of a month (the normal path is just the lock). The two counter UPDATEs became one statement. A consume went from about 10 queries to 7. Result: 50 accounts +39% throughput; hot account +25% throughput and p95 cut by more than half, because the lock is held for a shorter time.
+
 4. **Pool size made no measurable difference** (20 vs 10 connections, within noise of a single run), so the default stays 20.
+
 5. **Why we stopped here.** The remaining cost is the transaction itself and the per-account serialisation, which is what guarantees correct totals. Merging more queries would give a smaller gain (we estimate 10 to 15%, not measured) with more risk for correctness.
+
+6. **Absolute numbers are not stable across sessions.** The same decision code gave about 2x the throughput in a later session (series B and C vs series A), and moving k6 from the host into the Compose network changed nothing. Only runs made back to back in one session are comparable: optimisation 1 was measured that way (series A). What stays the same in every series is the shape: one hot account has 2 to 3x lower throughput and a 2.4 to 3.7x higher p95 than the same load spread over 50 accounts. In a closed loop with 20 VUs, latency is roughly VUs divided by throughput (20 / 71 ≈ 280 ms average), so the hot account's latency is mostly time spent waiting in the per-account queue.
 
 ## Limitations of these measurements
 
@@ -69,3 +114,6 @@ Correctness after every run: `verify.mjs` printed OK (account counter = sum of u
 - The load generator competes with the service and the database for CPU.
 - All requests are accepted. Rejections do the same work (lock, decision, log row), so their cost should be similar, but it was not measured separately.
 - Throughput was not tested above 20 VUs, and not with several service instances (that would need a shared database and the same locking, which already works across processes because the lock is in PostgreSQL).
+- The throughput is requests divided by the configured scenario length (30 s). k6's own "whole run" time includes the setup and the container clock is not steady, so it was not used.
+- Series B ran with the default log level (`info`), which costs a little throughput.
+- Absolute numbers on this laptop varied about 2x between sessions; the cause was not identified. Single runs, so the before/after of optimisation 1 (same session) shows direction and rough size, not a precise figure.

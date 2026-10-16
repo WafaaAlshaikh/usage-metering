@@ -2,83 +2,63 @@
 
 A backend service that other applications call to track usage and decide whether their users may perform an action. Accounts and their users each have a plan; every request must satisfy both.
 
-> Work in progress. This file is updated with every set of commits; see "Status" at the bottom.
 
 ## Stack
 
 TypeScript, Fastify, PostgreSQL, Drizzle ORM, Zod, Vitest, k6, Docker Compose.
 
-## Run locally (current state)
+## Model
+
+- **Account:** The application using the metering service.
+- **User:** An end user belonging to an account.
+- **Plan:** Defines usage limits and rules for an account or user.
+- **Units:** The single resource being metered.
+
+Account and user plans apply together. A request is accepted only if it satisfies both sets of limits.
+
+## Run locally 
 
 Prerequisites: Node 22.12+ (tested on 24), Docker.
 
-    docker run --name metering-db -e POSTGRES_USER=metering -e POSTGRES_PASSWORD=metering -e POSTGRES_DB=metering -p 5434:5432 -d postgres:16-alpine
-    cd service
-    npm install
-    $env:DATABASE_URL = "postgres://metering:metering@localhost:5434/metering"   (PowerShell)
-    npm run dev
+```powershell
+docker run --name metering-db -e POSTGRES_USER=metering -e POSTGRES_PASSWORD=metering -e POSTGRES_DB=metering -p 5434:5432 -d postgres:16-alpine
+cd service
+npm install
+$env:DATABASE_URL = "postgres://metering:metering@localhost:5434/metering"
+npm run dev
+```
 
 On start the service applies the migrations and seeds the predefined plans (safe to repeat). `GET /health` returns `{"status":"ok"}`.
 
 ## Run with Docker Compose
+Data lives in the named volume `pgdata` and survives `docker compose down` and restarts. Only `docker compose down -v` deletes it.
 
-    docker compose up --build
+```bash
+docker compose up --build
+```
 
-This starts PostgreSQL and the service (the example client is added to this file once it exists). The service applies the migrations and seeds the predefined plans on start. Stop any local `npm run dev` first, because both use port 3000.
+This starts PostgreSQL, the service (port 3000) and the example client (port 4000). The service applies the migrations and seeds the predefined plans on start. Stop any local `npm run dev` first, because both use port 3000. `ADMIN_TOKEN` defaults to `dev-admin-token` in the Compose file.
 
-    curl http://localhost:3000/health
+```bash
+curl http://localhost:3000/health
+```
 
 Settings have defaults inside `docker-compose.yml`; for local development without Docker copy `service/.env.example` to `service/.env`.
 
 ## Tests
+The tests use the standalone PostgreSQL container from "Run locally" (port 5434), not the Compose database. Run `npm install` in `service/` first. `npm run test:unit` needs no database.
 
-    docker exec metering-db psql -U metering -d postgres -c "create database metering_test"
-    cd service
-    npm test
+```bash
+docker exec metering-db psql -U metering -d postgres -c "create database metering_test"
+cd service
+npm test
+```
 
 Integration tests run against a real PostgreSQL database whose name must end in `_test` (they wipe it). Override with `TEST_DATABASE_URL`.
-
-
-## Performance
-
-Load tested with k6 on a laptop (6 cores, shared by k6, the service and PostgreSQL). Full method, commands, and numbers are in [`perf/README.md`](perf/README.md).
-
-| Scenario (20 VUs, 30 s) | consumes/s | p95 latency |
-|---|---|---|
-| One hot account, before optimisation | 32 | 1701 ms |
-| One hot account, after | 40 | 759 ms |
-| 50 accounts, before | 59 | 426 ms |
-| 50 accounts, after | 82 | 319 ms |
-
-- Requests of one account are serialised on its shared usage counter. That is what keeps the shared allowance exact under concurrency; requests of different accounts run in parallel.
-- The optimisation removed round trips (about 10 queries per consume down to 7) without changing any decision.
-- After every run, `perf/verify.mjs` confirmed that the account counter equals the sum of the user counters and the sum of accepted requests in the log.
-- Concurrency is also covered by automated tests (200 parallel requests never exceed an allowance; 20 parallel retries count once).
 
 ## How a request is decided
 
 Two rule types exist for both account plans and user plans: a monthly allowance (units per UTC calendar month) and a maximum per request. A request is accepted only if every rule of both plans allows the full amount; a rejection consumes nothing. Accepted units are added to both the user's and the account's usage for the current UTC month.
-
-<!-- ## Endpoints (summary)
-
-All routes except `GET /health` and `POST /accounts` need the header `x-api-key`. `POST /accounts` needs `x-admin-token` when `ADMIN_TOKEN` is set.
-
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/accounts` | Create an account; returns the API key once |
-| GET | `/account` | Current account and its plan |
-| PUT | `/account/plan` | Change the account plan |
-| POST | `/users` | Register a user (re-activates a deleted one) |
-| GET | `/users`, `/users/:id` | List (cursor pagination) / inspect with plan |
-| PUT | `/users/:id/plan` | Change a user's plan |
-| DELETE | `/users/:id` | Soft delete |
-| GET | `/plans`, `/plans/:id` | Predefined plans and your own (`?kind=`, `?includeArchived=`) |
-| POST / PATCH / DELETE | `/plans`, `/plans/:id` | Create / edit / archive a custom plan |
-| POST | `/consume` | Decide and record one request |
-| GET | `/usage` | Consumed and remaining, account plus a page of users (`?period=YYYY-MM`, `?limit`, `?after`) |
-| GET | `/history` | Request outcomes, newest first (`?userId`, `?period`, `?accepted`, `?limit`, `?cursor`) |
-
-Errors always look like `{ "error": { "code", "message", "details"? } }`. A rejected consume is HTTP 200 with `accepted: false` and the rule that blocked it. -->
 
 ## API reference
 
@@ -131,10 +111,10 @@ curl -s -X POST localhost:3000/plans -H "x-api-key: $KEY" -H 'content-type: appl
   -d '{"kind":"user","name":"Gold","monthlyAllowance":2000,"maxUnitsPerRequest":100}'
 curl -s -X PATCH localhost:3000/plans/<id> -H "x-api-key: $KEY" -H 'content-type: application/json' \
   -d '{"maxUnitsPerRequest":50}'                                    # missing field = unchanged, null = remove the limit
-curl -s -X DELETE localhost:3000/plans/<id> -H "x-api-key: $KEY"    # archives it
+curl -s -X DELETE localhost:3000/plans/<id> -H "x-api-key: $KEY"   # archives it
 curl -s -X PUT localhost:3000/account/plan -H "x-api-key: $KEY" -H 'content-type: application/json' \
   -d '{"planId":"<account plan id>"}'
-curl -s localhost:3000/account -H "x-api-key: $KEY"                 # the account and its current plan
+curl -s localhost:3000/account -H "x-api-key: $KEY"                # the account and its current plan
 ```
 
 Predefined plans are read-only (403 `plan_read_only`). Another account's plan behaves like a plan that does not exist (404). Several users can share one plan; each keeps its own usage.
@@ -186,6 +166,7 @@ Always `{ "error": { "code": "…", "message": "…", "details": … } }`.
 | 409 | `user_exists`, `plan_archived`, `plan_name_taken` | Conflicts on registration, assignment, naming |
 | 410 | `gone` | The user was deleted |
 | 500 | `internal_error` | A bug; details are logged, never returned |
+| 503 | `busy` | Connection pool or row-lock wait timed out under overload. `Retry-After: 1`; retrying with the same `requestId` is safe |
 
 ## Retries and idempotency
 
@@ -215,16 +196,6 @@ Two rule types, for both account and user plans: `monthly_allowance` (units per 
 - **The database enforces ownership.** Plan kind, plan ownership, and "this user belongs to this account" are foreign keys and checks, so a bug in the service cannot create cross-account data. Tests attack these constraints directly.
 - **Layers.** `http/` (routes, validation, auth, error mapping) → `services/` (transactions and business flow) → `repo/` (queries) → `domain/` (pure rules, errors, periods).
 - **API keys:** 256-bit random, only the SHA-256 hash stored, looked up through a unique index on every request.
-
-
-## Predefined plans
-
-| Kind | Name | Monthly allowance | Max per request |
-|---|---|---|---|
-| account | Starter | 10,000 | 100 |
-| account | Pro | 1,000,000 | 1,000 |
-| user | Basic | 1,000 | 20 |
-| user | Premium | 5,000 | 200 |
 
 ## Data model
 
@@ -258,8 +229,36 @@ The database enforces: plan kinds, plan ownership (an account can only use prede
 18. Any account may pick any predefined plan for itself or its users; billing is out of scope.
 19. `/usage` computes `remaining` from the plan limits in force now, also for past months. The limits that applied at each decision are in `/history`.
 20. A deleted user with usage in the requested month is still listed in `/usage` (marked `deleted`) so users add up to the account total; one without usage is hidden.
-21. Reads take no locks, so they never slow consumes down. Numbers are as of the moment each query ran.
+21. Reads take no row locks, so they never slow consumes down. Each `/usage` response is read in one repeatable-read snapshot, so the listed users add up to the account total even while consumes run.
 22. History cursors keep `created_at` as microsecond text plus the row id, so pages never skip or repeat a row.
+23. `request_log.created_at` is taken with `clock_timestamp()` while the usage locks are held, so history order equals decision order (`now()` would be the start of the transaction, before waiting for the lock).
+24. When the service is overloaded (no database connection within 5 s, a lock wait over 5 s, or a statement over 15 s) it answers 503 `busy` instead of hanging. Because `requestId` is idempotent, the caller can retry safely.
+
+## Predefined plans
+
+| Kind | Name | Monthly allowance | Max per request |
+|---|---|---:|---:|
+| account | Starter | 10,000 | 100 |
+| account | Pro | 1,000,000 | 1,000 |
+| user | Basic | 1,000 | 20 |
+| user | Premium | 5,000 | 200 |
+
+## Performance
+
+Load tested with [k6](https://k6.io) on a laptop (6 cores shared by k6, the service and PostgreSQL). Method, commands and every run: [`perf/README.md`](perf/README.md).
+
+Current code, k6 inside the Compose network, 20 VUs for 30 s, every request accepted:
+
+| Scenario | consumes/s | p50 | p95 | p99 |
+|---|---:|---:|---:|---:|
+| One hot account (20 users) | ~71 | 253 ms | 542 ms | 916 ms |
+| 50 accounts (5 users each) | ~208 | 87 ms | 145 ms | 286 ms |
+
+- The same load spread over 50 accounts gives 2 to 3x the throughput and a 2.4 to 3.7x lower p95 than hitting one account (the exact factor differs per session). Requests of one account are serialised on its shared usage counter; that is what keeps the shared allowance exact under concurrency. Requests of different accounts do not wait for each other.
+- An earlier session compared the version before and after removing round trips (about 10 queries per consume down to 7), back to back: +25% throughput and p95 cut by more than half on the hot account, +39% on 50 accounts (single runs). Absolute numbers on this laptop varied about 2x between sessions, so those runs are not comparable with the table above; both series are in `perf/README.md`.
+- After every run `perf/verify.mjs` confirmed that the account counter equals the sum of the user counters and the sum of accepted requests in the log.
+- Concurrency is also covered by automated tests (200 parallel requests never exceed an allowance; 20 parallel retries count once).
+- Under overload the service answers 503 (`Retry-After`) instead of queueing forever; a retry with the same `requestId` is safe.
 
 ## Known limitations
 
@@ -271,15 +270,19 @@ The database enforces: plan kinds, plan ownership (an account can only use prede
 - All requests of one account serialise on its usage row. That is required for an exact shared allowance and was measured (see Performance).
 - The month of a request comes from the service's clock (UTC); other timestamps come from the database clock. With several service instances, clock drift could assign a request near midnight UTC to the neighbouring month.
 - `/usage` computes `remaining` from the current plan limits, also for past months; `/history` has the limits of the time.
-- Reads are not locked: usage numbers are as of the moment each query ran.
+- A retry of an old request after its user was deleted returns 410, not the original decision (the user check runs before the `requestId` lookup).
+- Migrations run on service start. Starting several instances at the same moment could race; run a single instance, or migrate before scaling out.
+- The load numbers were measured on a shared laptop with one run per scenario; the generator competes with the service and the database for CPU.
 - Performance numbers are single runs on a shared laptop.
 
 ## Example client
 
 A small web page (plain Node, no dependencies) that calls the service with an account's API key on behalf of three users. The browser only talks to the client's own server, so the API key never reaches it.
 
-    docker compose up --build
-    open http://localhost:4000
+```bash
+docker compose up --build
+open http://localhost:4000
+```
 
 On start the client creates a demo account: a small account plan (100 / month, 50 per request) and users `alice` and `carol` on "Demo Basic" (80 / 20) and `bob` on "Demo Premium" (500 / 50). **Reset demo** creates a new account with a new key (old demo accounts stay in the database).
 
@@ -287,16 +290,13 @@ Walkthrough: (1) alice 10 is accepted; (2) alice 25 is rejected by her per-reque
 
 Without Docker: run the service, then `cd client && node src/server.mjs` (set `SERVICE_URL` and `ADMIN_TOKEN` if they differ from the defaults).
 
-## Status
+## Project Status
 
-- [x] Schema, migrations, predefined plans
-- [x] Rule evaluation (pure functions) with unit tests
-- [x] Database constraint tests
-- [x] Docker Compose (service and database; client to be added)
-- [x] Consume (transaction, locking, idempotency) with concurrency tests
-- [x] API-key auth, error handling, account isolation tests
-- [x] Accounts, users, custom plans, plan assignment, archiving
-- [x] Usage and history endpoints (pagination, past months)
-- [x] Example client
-- [x] Load tests (k6) and results
-- [ ] Full API reference
+The core service is implemented, with:
+
+- Account and user quota enforcement using monthly and per-request limits.
+- Transactional consumption with PostgreSQL row locking and idempotency.
+- API-key authentication and account-level data isolation.
+- Custom plans, usage tracking, and audit history.
+- Unit, integration, database constraint, and concurrency tests.
+- Docker Compose setup, an example client, and k6 performance tests.

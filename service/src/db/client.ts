@@ -14,7 +14,13 @@ export interface DbHandle {
 }
 
 export function createDb(connectionString: string, max = 20): DbHandle {
-  const pool = new Pool({ connectionString, max });
+  const pool = new Pool({
+    connectionString,
+    max,
+    // Fail fast instead of queueing forever when the pool or a row lock is saturated.
+    connectionTimeoutMillis: 5_000,
+    options: '-c lock_timeout=5000 -c statement_timeout=15000',
+  });
   const db = drizzle(pool, { schema });
   return { db, pool };
 }
