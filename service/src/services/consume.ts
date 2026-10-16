@@ -7,7 +7,7 @@ import { periodLabel, periodStartOf } from '../domain/period';
 import { evaluate } from '../domain/rules';
 import { findPlansForUser } from '../repo/plans';
 import { findByRequestId, insertRequestLog } from '../repo/requestLog';
-import { addUsage, ensureUsageRows, lockUsage } from '../repo/usage';
+import { addUsage, lockUsage } from '../repo/usage';
 import { findUserByExternalId } from '../repo/users';
 
 export interface ConsumeInput {
@@ -48,8 +48,7 @@ const limitsOf = (plan: { monthlyAllowance: number | null; maxUnitsPerRequest: n
  *
  * One database transaction:
  *   1. find the user inside the calling account (404 / 410 otherwise)
- *   2. make sure this month's counter rows exist, then lock account counter -> user counter
- *   3. look the requestId up (after the locks, so identical concurrent requests queue up
+ *   2. lock account counter -> user counter (creating this month's rows only if missing) *   3. look the requestId up (after the locks, so identical concurrent requests queue up
  *      and the later ones see the earlier one's result)
  *   4. read both plans (after the locks, so the decision uses the plans as they are now)
  *   5. evaluate the rules (pure function)
@@ -70,7 +69,6 @@ export async function consume(db: Db, input: ConsumeInput, now: Date = new Date(
       throw new GoneError(`User "${input.externalUserId}" has been deleted`);
     }
 
-    await ensureUsageRows(tx, input.accountId, user.id, periodStart);
     const usage = await lockUsage(tx, input.accountId, user.id, periodStart);
 
     const previous = await findByRequestId(tx, input.accountId, input.requestId);
