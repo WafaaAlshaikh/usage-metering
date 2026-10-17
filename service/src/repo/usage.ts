@@ -68,3 +68,14 @@ export async function addUsage(
      where user_id = ${userId}::uuid and period_start = ${periodStart}::date
   `);
 }
+
+/**
+ * The current UTC month ('YYYY-MM-01') by the DATABASE clock. Used instead of the app server's
+ * clock so every service instance agrees, and so the month can be re-read after waiting for a lock.
+ */
+export async function currentPeriodStart(ex: Executor): Promise<string> {
+  const res = await ex.execute(
+    sql`select to_char(date_trunc('month', clock_timestamp() at time zone 'UTC'), 'YYYY-MM-DD') as p`,
+  );
+  return (res.rows[0] as { p: string }).p;
+}

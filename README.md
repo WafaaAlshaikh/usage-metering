@@ -176,6 +176,8 @@ Reusing a `requestId` for a different user or amount is a client bug, not a retr
 
 How it stays correct: each consume is one database transaction that locks the account's usage row and then the user's (always in that order, so requests cannot deadlock), checks the `requestId`, reads the plans, decides, updates both counters, and writes the log row. Either everything is stored or nothing is. The database also enforces `UNIQUE (account_id, request_id)` as a last line of defence; the rare race where the same `requestId` arrives on both sides of a month boundary is handled by one internal re-run that finds and replays the first result.
 
+A saved result is returned even if the user was deleted afterwards; new consumption for a deleted user is still refused (410).
+
 ## Changing plans and rules
 
 - An edit (`PATCH /plans/:id`) is a single `UPDATE`; the next consume that takes its locks sees the new limits. Editing a custom plan affects every account or user assigned to it, with no redeploy and no client change.
@@ -221,7 +223,7 @@ The database enforces: plan kinds, plan ownership (an account can only use prede
 10. `updated_at` values come from the database clock so they stay consistent when the app server clock drifts.
 11. A requestId is unique per account. Retrying the same user and units returns the original decision (`replayed: true`) and counts the units once. The same requestId with a different user or amount is rejected with 409.
 12. Each consume runs in one database transaction that locks the account usage row and then the user usage row (always in that order). The decision is made under the locks, so concurrent requests can never exceed an allowance. The cost: requests of one account are processed one after another.
-13. Plans are read after the locks are taken, so a decision uses the plans as they are at decision time, and the request log stores the limits that were applied.
+13. Plans are read after the locks are taken, so a decision uses the plans as they are at decision time, and the request log stores the limits that were applied.A request's plans are fixed when it gets the locks: a plan update that completed before that moment applies to it, one that completes later applies to the next request.
 14. A user that does not exist in the calling account returns 404 (the same answer for another account's user, so nothing leaks). A soft-deleted user returns 410.
 15. API keys are random (256 bits), shown once at account creation, and only their SHA-256 hash is stored. A fast hash is enough because the key cannot be guessed, and it allows looking the account up through a unique index on every request (bcrypt-style salted hashes would not).
 16. Predefined plans are read-only (403 `plan_read_only`). Another account's plan is a 404, the same answer as a plan that does not exist.
@@ -233,6 +235,7 @@ The database enforces: plan kinds, plan ownership (an account can only use prede
 22. History cursors keep `created_at` as microsecond text plus the row id, so pages never skip or repeat a row.
 23. `request_log.created_at` is taken with `clock_timestamp()` while the usage locks are held, so history order equals decision order (`now()` would be the start of the transaction, before waiting for the lock).
 24. When the service is overloaded (no database connection within 5 s, a lock wait over 5 s, or a statement over 15 s) it answers 503 `busy` instead of hanging. Because `requestId` is idempotent, the caller can retry safely.
+25. The month of a request is the month at the moment it is decided (when it holds the usage locks), read from the database clock. A request that waits for a lock across midnight UTC is re-run on the new month's counters, so its counters, response period and history row always agree.
 
 ## Predefined plans
 
@@ -268,9 +271,7 @@ Current code, k6 inside the Compose network, 20 VUs for 30 s, every request acce
 - No rate limiting on the API itself, and request history is kept forever (no retention or archiving).
 - Units are 64-bit in the database but JavaScript numbers in the service (exact up to 2^53); requests are capped at 10^12 units.
 - All requests of one account serialise on its usage row. That is required for an exact shared allowance and was measured (see Performance).
-- The month of a request comes from the service's clock (UTC); other timestamps come from the database clock. With several service instances, clock drift could assign a request near midnight UTC to the neighbouring month.
 - `/usage` computes `remaining` from the current plan limits, also for past months; `/history` has the limits of the time.
-- A retry of an old request after its user was deleted returns 410, not the original decision (the user check runs before the `requestId` lookup).
 - Migrations run on service start. Starting several instances at the same moment could race; run a single instance, or migrate before scaling out.
 - The load numbers were measured on a shared laptop with one run per scenario; the generator competes with the service and the database for CPU.
 - Performance numbers are single runs on a shared laptop.

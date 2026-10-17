@@ -1,4 +1,4 @@
-import type { Db } from '../db/client';
+import type { Db, Executor } from '../db/client';
 import { isUniqueViolation } from '../db/pgErrors';
 import type { RequestLogRow } from '../db/schema';
 import type { Limits, Rejection } from '../domain/decision';
@@ -7,8 +7,17 @@ import { periodLabel, periodStartOf } from '../domain/period';
 import { evaluate } from '../domain/rules';
 import { findPlansForUser } from '../repo/plans';
 import { findByRequestId, insertRequestLog } from '../repo/requestLog';
-import { addUsage, lockUsage } from '../repo/usage';
+import { addUsage, currentPeriodStart, lockUsage } from '../repo/usage';
 import { findUserByExternalId } from '../repo/users';
+
+/** Returns the UTC month ('YYYY-MM-01') to account a request to. Replaceable in tests. */
+export type PeriodSource = (ex: Executor) => Promise<string>;
+
+/** Thrown inside the transaction (so it rolls back) when the month changed while waiting for the locks. */
+class MonthChanged extends Error {}
+
+const MAX_ATTEMPTS = 3; // the month can change at most once in practice; 3 is a safety margin
+
 
 export interface ConsumeInput {
   accountId: string; // from the API key, never from the request body
@@ -46,31 +55,66 @@ const limitsOf = (plan: { monthlyAllowance: number | null; maxUnitsPerRequest: n
 /**
  * Decides and records one consume request, atomically.
  *
+ * The month a request belongs to is the month at the moment it is DECIDED, i.e. when it holds
+ * the usage locks, not when it arrived. Because the lock is taken on a specific month's row,
+ * the month is read first, the locks are taken, and the month is read again: if it changed while
+ * waiting, the transaction rolls back and starts over on the new month's counters.
+ * `now` (tests) pins the month; otherwise the database clock decides.
+ *
  * One database transaction:
- *   1. find the user inside the calling account (404 / 410 otherwise)
- *   2. lock account counter -> user counter (creating this month's rows only if missing) 
- *   3. look the requestId up (after the locks, so identical concurrent requests queue up
+ *   1. find the user inside the calling account (404 otherwise)
+ *   2. a saved result for this requestId is returned as a replay, even if the user was deleted
+ *      since (fast path, no locks, nothing is created)
+ *   3. a deleted user cannot consume anything new (410)
+ *   4. read the month, lock account counter -> user counter (creating the month's rows only if
+ *      missing), read the month again
+ *   5. look the requestId up again (after the locks, so identical concurrent requests queue up
  *      and the later ones see the earlier one's result)
- *   4. read both plans (after the locks, so the decision uses the plans as they are now)
- *   5. evaluate the rules (pure function)
- *   6. if accepted, add the units to both counters
- *   7. write the request_log row (accepted or rejected)
- * Because the counters are locked from step 2 to the commit, the allowance can never be exceeded
- * by concurrent requests. The price is that requests of one account run one after another.
+ *   6. read both plans (after the locks: a request's plans are fixed when it gets the locks; an
+ *      update that completed before that moment applies, one that completes later does not)
+ *   7. evaluate the rules (pure function)
+ *   8. if accepted, add the units to both counters
+ *   9. write the request_log row (accepted or rejected)
+ * The allowance can never be exceeded by concurrent requests. The price is that requests of one
+ * account run one after another.
  */
-export async function consume(db: Db, input: ConsumeInput, now: Date = new Date()): Promise<ConsumeResult> {
-  const periodStart = periodStartOf(now);
+export async function consume(
+  db: Db,
+  input: ConsumeInput,
+  now?: Date,
+  periodSource?: PeriodSource,
+): Promise<ConsumeResult> {
+  const readPeriod: PeriodSource =
+    periodSource ?? (now ? async () => periodStartOf(now) : currentPeriodStart);
 
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      return await consumeInMonth(db, input, readPeriod);
+    } catch (err) {
+      if (!(err instanceof MonthChanged)) throw err;
+    }
+  }
+  throw new Error('the month changed repeatedly while one request was waiting');
+}
+
+async function consumeInMonth(db: Db, input: ConsumeInput, readPeriod: PeriodSource): Promise<ConsumeResult> {
   return db.transaction(async (tx) => {
     const user = await findUserByExternalId(tx, input.accountId, input.externalUserId);
     if (!user) {
       throw new NotFoundError(`User "${input.externalUserId}" is not registered for this account`);
     }
+
+    // A retry gets the original answer even if the user was deleted after the first attempt.
+    const saved = await findByRequestId(tx, input.accountId, input.requestId);
+    if (saved) return replayOf(saved, user.id, input);
+
     if (user.deletedAt) {
       throw new GoneError(`User "${input.externalUserId}" has been deleted`);
     }
 
+    const periodStart = await readPeriod(tx);
     const usage = await lockUsage(tx, input.accountId, user.id, periodStart);
+    if ((await readPeriod(tx)) !== periodStart) throw new MonthChanged();
 
     const previous = await findByRequestId(tx, input.accountId, input.requestId);
     if (previous) return replayOf(previous, user.id, input);
@@ -122,6 +166,7 @@ export async function consume(db: Db, input: ConsumeInput, now: Date = new Date(
   });
 }
 
+
 /**
  * A repeated requestId: the same user and units get the original decision back, nothing is
  * counted again. A different user or amount is a client bug, not a retry, so it is a 409.
@@ -156,16 +201,16 @@ function replayOf(previous: RequestLogRow, userId: string, input: ConsumeInput):
 }
 
 /**
- * Same as consume(), plus one retry for a rare race: the same requestId arriving on both sides of
- * a month boundary locks different usage rows, so both transactions run in parallel and the second
- * one hits UNIQUE (account_id, request_id). The transaction rolled back, so nothing was counted;
- * running it again finds the first result and answers with a replay.
+ * Same as consume(), plus one re-run for a rare race: the same requestId arriving while the month
+ * flips can lock different usage rows, so two transactions run in parallel and the second hits
+ * UNIQUE (account_id, request_id). It rolled back, so nothing was counted; running it again finds
+ * the first result and answers with a replay.
  */
-export async function consumeWithRetry(db: Db, input: ConsumeInput): Promise<ConsumeResult> {
+export async function consumeWithRetry(db: Db, input: ConsumeInput, now?: Date): Promise<ConsumeResult> {
   try {
-    return await consume(db, input);
+    return await consume(db, input, now);
   } catch (err) {
-    if (isUniqueViolation(err, 'request_log_account_request_uq')) return consume(db, input);
+    if (isUniqueViolation(err, 'request_log_account_request_uq')) return consume(db, input, now);
     throw err;
   }
 }

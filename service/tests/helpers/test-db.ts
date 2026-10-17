@@ -22,7 +22,13 @@ export async function setupTestDb(): Promise<TestDb> {
   if (!dbName.endsWith('_test')) {
     throw new Error(`Refusing to wipe "${dbName}": test database names must end in "_test"`);
   }
-  const { db, pool } = createDb(TEST_DATABASE_URL, 10);
+    const { db, pool } = createDb(TEST_DATABASE_URL, {
+    max: 10,
+    // Tests fire hundreds of requests at once on a small pool; queueing is expected, not overload.
+    connectionTimeoutMs: 60_000,
+    lockTimeoutMs: 60_000,
+    statementTimeoutMs: 60_000,
+  });
   await pool.query('drop schema if exists public cascade');
   await pool.query('drop schema if exists drizzle cascade');
   await pool.query('create schema public');

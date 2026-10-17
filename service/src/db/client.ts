@@ -13,14 +13,23 @@ export interface DbHandle {
   pool: Pool;
 }
 
-export function createDb(connectionString: string, max = 20): DbHandle {
+export interface DbOptions {
+  max?: number;
+  connectionTimeoutMs?: number;
+  lockTimeoutMs?: number;
+  statementTimeoutMs?: number;
+}
+
+export function createDb(connectionString: string, opts: DbOptions | number = {}): DbHandle {
+  const o: DbOptions = typeof opts === 'number' ? { max: opts } : opts; // number = old signature (pool size)
   const pool = new Pool({
     connectionString,
-    max,
+    max: o.max ?? 20,
     // Fail fast instead of queueing forever when the pool or a row lock is saturated.
-    connectionTimeoutMillis: 5_000,
-    options: '-c lock_timeout=5000 -c statement_timeout=15000',
+    connectionTimeoutMillis: o.connectionTimeoutMs ?? 5_000,
+    options: `-c lock_timeout=${o.lockTimeoutMs ?? 5_000} -c statement_timeout=${o.statementTimeoutMs ?? 15_000}`,
   });
   const db = drizzle(pool, { schema });
   return { db, pool };
 }
+
