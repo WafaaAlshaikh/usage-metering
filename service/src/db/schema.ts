@@ -64,6 +64,8 @@ export const SYSTEM_OWNER_KEY = '00000000-0000-0000-0000-000000000000';
 export const planKind = pgEnum('plan_kind', ['account', 'user']);
 export const ruleScope = pgEnum('rule_scope', ['account', 'user']);
 export const ruleType = pgEnum('rule_type', ['max_per_request', 'monthly_allowance']);
+/** Largest integer a JavaScript number holds exactly (2^53 - 1). Counters may never pass it. */
+export const MAX_SAFE_COUNTER = 9_007_199_254_740_991;
 
 const periodColumn = (name: string) => date(name, { mode: 'string' }).notNull();
 const isFirstOfMonth = (col: AnyPgColumn) => sql`extract(day from ${col}) = 1`;
@@ -198,6 +200,7 @@ export const accountUsage = pgTable(
     primaryKey({ columns: [t.accountId, t.periodStart] }),
     check('account_usage_consumed_nonneg', sql`${t.consumed} >= 0`),
     check('account_usage_period_is_month_start', isFirstOfMonth(t.periodStart)),
+    check('account_usage_consumed_safe', sql`${t.consumed} <= ${sql.raw(String(MAX_SAFE_COUNTER))}`),
   ],
 );
 
@@ -222,6 +225,7 @@ export const userUsage = pgTable(
     index('user_usage_account_period_idx').on(t.accountId, t.periodStart),
     check('user_usage_consumed_nonneg', sql`${t.consumed} >= 0`),
     check('user_usage_period_is_month_start', isFirstOfMonth(t.periodStart)),
+    check('user_usage_consumed_safe', sql`${t.consumed} <= ${sql.raw(String(MAX_SAFE_COUNTER))}`),
   ],
 );
 

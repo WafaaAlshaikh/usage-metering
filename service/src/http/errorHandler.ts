@@ -6,6 +6,19 @@ const body = (code: string, message: string, details?: unknown) => ({
   error: { code, message, ...(details === undefined ? {} : { details }) },
 });
 
+const POOL_TIMEOUT = /timeout exceeded when trying to connect/;
+
+/** Pool wait timeout, lock_timeout (55P03) or statement_timeout (57014), directly or wrapped as `cause`. */
+function isOverload(err: unknown): boolean {
+  let e = err as { code?: string; message?: string; cause?: unknown } | undefined;
+  for (let depth = 0; e && depth < 5; depth++) {
+    if (e.code === '55P03' || e.code === '57014') return true;
+    if (typeof e.message === 'string' && POOL_TIMEOUT.test(e.message)) return true;
+    e = e.cause as typeof e;
+  }
+  return false;
+}
+
 export function registerErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((err: FastifyError | Error, req, reply) => {
     if (err instanceof AppError) {
@@ -20,11 +33,9 @@ export function registerErrorHandler(app: FastifyInstance): void {
     if (statusCode && statusCode >= 400 && statusCode < 500) {
       return reply.status(statusCode).send(body('bad_request', err.message));
     }
-        // Overload: pool exhausted, lock wait or statement timed out. Safe to retry with the same
+    // Overload: pool exhausted, lock wait or statement timed out. Safe to retry with the same
     // requestId, because consume is idempotent.
-    const e = err as { code?: string; cause?: { code?: string } };
-    const pgCode = e.code ?? e.cause?.code;
-    if (pgCode === '55P03' || pgCode === '57014' || /timeout exceeded when trying to connect/.test(err.message)) {
+    if (isOverload(err)) {
       return reply
         .status(503)
         .header('retry-after', '1')

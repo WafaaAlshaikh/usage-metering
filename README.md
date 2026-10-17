@@ -46,7 +46,18 @@ curl http://localhost:3000/health
 Settings have defaults inside `docker-compose.yml`; for local development without Docker copy `service/.env.example` to `service/.env`.
 
 ## Tests
-The tests use the standalone PostgreSQL container from "Run locally" (port 5434), not the Compose database. Run `npm install` in `service/` first. `npm run test:unit` needs no database.
+
+Unit tests need no database:
+
+    cd service && npm run test:unit
+
+Integration tests need a disposable PostgreSQL database (the tests wipe it; its name must end in `_test`):
+
+    docker run --name metering-db -e POSTGRES_USER=metering -e POSTGRES_PASSWORD=metering -e POSTGRES_DB=metering -p 5434:5432 -d postgres:16-alpine
+    docker exec metering-db psql -U metering -d postgres -c "create database metering_test"
+    cd service && npm run test:integration
+
+`npm test` runs both. If integration tests fail with `ECONNREFUSED ...:5434`, the container is not running: `docker start metering-db`. Override the database with `TEST_DATABASE_URL`.
 
 ```bash
 docker exec metering-db psql -U metering -d postgres -c "create database metering_test"
@@ -269,7 +280,7 @@ Current code, k6 inside the Compose network, 20 VUs for 30 s, every request acce
 - `POST /accounts` is open when `ADMIN_TOKEN` is not set (convenient locally; always set it elsewhere). Accounts cannot be deleted or renamed.
 - Any account may pick any predefined plan; there is no billing or approval.
 - No rate limiting on the API itself, and request history is kept forever (no retention or archiving).
-- Units are 64-bit in the database but JavaScript numbers in the service (exact up to 2^53); requests are capped at 10^12 units.
+- Usage counters are 64-bit in the database but JavaScript numbers in the service. A CHECK constraint keeps each counter at or below 2^53 - 1, so precision is never lost silently; the database refuses the write instead (reaching it would take about 9,000 requests of the 10^12 cap).
 - All requests of one account serialise on its usage row. That is required for an exact shared allowance and was measured (see Performance).
 - `/usage` computes `remaining` from the current plan limits, also for past months; `/history` has the limits of the time.
 - Migrations run on service start. Starting several instances at the same moment could race; run a single instance, or migrate before scaling out.

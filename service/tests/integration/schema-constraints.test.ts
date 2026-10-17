@@ -148,6 +148,21 @@ describe('user and account always belong together', () => {
   });
 });
 
+
+describe('counters stay exact', () => {
+  it('the database refuses a counter above 2^53 - 1', async () => {
+    const a = await makeAccount('A');
+    const u = await makeUser(a, 'u1');
+    await expect(
+      attempt(c, `insert into user_usage(user_id, account_id, period_start, consumed) values ($1, $2, '2026-10-01', 9007199254740992)`, [u, a]),
+    ).rejects.toMatchObject({ constraint: 'user_usage_consumed_safe' });
+    await expect(
+      attempt(c, `insert into account_usage(account_id, period_start, consumed) values ($1, '2026-10-01', 9007199254740992)`, [a]),
+    ).rejects.toMatchObject({ constraint: 'account_usage_consumed_safe' });
+    await attempt(c, `insert into account_usage(account_id, period_start, consumed) values ($1, '2026-10-01', 9007199254740991)`, [a]);
+  });
+});
+
 describe('request_log plan kinds', () => {
   it('rejects a user-kind plan as the account plan', async () => {
     const a = await makeAccount('A');

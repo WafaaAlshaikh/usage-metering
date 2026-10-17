@@ -1,0 +1,2 @@
+ALTER TABLE "account_usage" ADD CONSTRAINT "account_usage_consumed_safe" CHECK ("account_usage"."consumed" <= 9007199254740991);--> statement-breakpoint
+ALTER TABLE "user_usage" ADD CONSTRAINT "user_usage_consumed_safe" CHECK ("user_usage"."consumed" <= 9007199254740991);

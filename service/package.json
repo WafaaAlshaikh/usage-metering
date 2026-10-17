@@ -11,7 +11,9 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration"
   },
   "keywords": [],
   "author": "",
