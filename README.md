@@ -290,6 +290,7 @@ Current code, k6 inside the Compose network, 20 VUs for 30 s, every request acce
 ## Example client
 
 A small web page (plain Node, no dependencies) that calls the service with an account's API key on behalf of three users. The browser only talks to the client's own server, so the API key never reaches it.
+The shared-limit button uses up the whole demo account, so it starts a fresh demo account first. Plan changes apply to the current account: run “alice 10” or “alice 25” before and after step 2.
 
 ```bash
 docker compose up --build

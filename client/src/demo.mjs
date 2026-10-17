@@ -110,8 +110,11 @@ export function updatePlan(planId, { monthlyAllowance, maxUnitsPerRequest }) {
   return call('PATCH', `/plans/${planId}`, { key: need().key, body: { monthlyAllowance, maxUnitsPerRequest } });
 }
 
-/** The scenarios from the brief as one-click buttons. They only call the service's public API. */
+/** Scenarios that test the rules start from a fresh demo account, so they behave the same in any order. */
+const FRESH = new Set(['account-limit']);
+
 export async function scenario(name) {
+  if (FRESH.has(name)) await seed();
   const { planIds } = need();
   switch (name) {
     case 'accepted':
@@ -129,7 +132,7 @@ export async function scenario(name) {
     }
     case 'raise-basic-limit': {
       await updatePlan(planIds.basic, { maxUnitsPerRequest: 50 });
-      return { decisions: [], note: 'Demo Basic now allows 50 per request (alice and carol both use it). Run "alice 25" again.' };
+      return { decisions: [], note: 'Demo Basic now allows 50 per request (alice and carol both use it). Run "alice consumes 25" again.' };
     }
     case 'switch-alice-premium': {
       await switchUserPlan('alice', planIds.premium);
