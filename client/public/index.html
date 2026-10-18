@@ -57,6 +57,7 @@
 </header>
 <div class="tabs">
   <button class="active" data-tab="demo">Guided demo</button>
+  <button data-tab="app">Dashboard</button>
   <button data-tab="api">API explorer</button>
 </div>
 
@@ -110,6 +111,89 @@
   </section>
 </main>
 
+<main id="tab-app" class="api hidden">
+  <section>
+    <div class="card"><h2>Dashboard</h2>
+      <div id="a-nav"></div>
+      <div class="muted" style="margin-top:10px">Every button here calls the real service with the active account's key.</div>
+    </div>
+  </section>
+  <section>
+    <div id="a-msg" class="dec hidden"></div>
+
+    <div class="card" data-sec="account">
+      <h2>My account</h2>
+      <div id="a-account" class="muted">Loading…</div>
+      <div class="row" style="margin-top:10px"><select id="a-acc-plan"></select><button id="a-acc-change">Change account plan</button></div>
+      <div class="muted" style="margin-top:4px">Switching plans keeps what was already consumed this month.</div>
+      <h2 style="margin-top:18px">Create a new account</h2>
+      <div class="row">
+        <input id="a-new-name" placeholder="Company name">
+        <select id="a-new-plan"><option>Starter</option><option>Pro</option></select>
+        <button id="a-new-go">Create account</button>
+      </div>
+      <div class="muted" style="margin-top:4px">The new account becomes the active one (its key stays on the server). Use "Reset demo" to go back to the demo account.</div>
+    </div>
+
+    <div class="card" data-sec="users">
+      <h2>Users</h2>
+      <div class="row">
+        <input id="a-u-id" placeholder="User id, e.g. dave">
+        <select id="a-u-plan"></select>
+        <button id="a-u-add">Register user</button>
+      </div>
+      <div class="muted" style="margin:4px 0 10px">Registering a deleted user brings it back with its old usage.</div>
+      <table><thead><tr><th>User</th><th>Plan</th><th>Change plan</th><th></th></tr></thead><tbody id="a-u-rows"></tbody></table>
+      <div class="row" style="margin-top:8px"><button id="a-u-more" class="hidden">Load more</button></div>
+    </div>
+
+    <div class="card" data-sec="plans">
+      <h2>Plans</h2>
+      <div class="row" style="margin-bottom:6px">
+        <select id="a-p-kind"><option value="user">user plan</option><option value="account">account plan</option></select>
+        <input id="a-p-name" placeholder="Plan name">
+        <input id="a-p-month" type="number" min="0" placeholder="per month">
+        <input id="a-p-req" type="number" min="1" placeholder="per request">
+        <button id="a-p-add">Create plan</button>
+      </div>
+      <div class="muted" style="margin-bottom:10px">Empty limit = no limit.</div>
+      <label style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><input type="checkbox" id="a-p-arch"> Show archived plans</label>
+      <table><thead><tr><th>Name</th><th>Kind</th><th>Per month</th><th>Per request</th><th></th></tr></thead><tbody id="a-p-rows"></tbody></table>
+    </div>
+
+    <div class="card" data-sec="consume">
+      <h2>Consume units</h2>
+      <div class="row">
+        <select id="a-c-user"></select>
+        <input id="a-c-units" type="number" min="1" value="5">
+        <input id="a-c-req" placeholder="request id (blank = new each time)">
+        <button class="primary" id="a-c-go">Consume</button>
+        <button id="a-c-again" disabled>Send the same request again</button>
+      </div>
+      <div class="muted" style="margin:4px 0 10px">Sending the same request again shows a safe retry: same decision, <b>replayed</b>, nothing counted twice.</div>
+      <div id="a-c-out"></div>
+    </div>
+
+    <div class="card" data-sec="usage">
+      <h2>Usage</h2>
+      <div class="row"><label>Month</label><input id="a-us-month" type="month"><button id="a-us-go">Show usage</button><button id="a-us-next" class="hidden">Next page</button></div>
+      <div id="a-us-out" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card" data-sec="history">
+      <h2>History</h2>
+      <div class="row">
+        <select id="a-h-user"></select>
+        <select id="a-h-acc"><option value="">all outcomes</option><option value="true">accepted</option><option value="false">rejected</option></select>
+        <input id="a-h-month" type="month">
+        <button id="a-h-go">Search</button>
+      </div>
+      <table style="margin-top:10px"><thead><tr><th>Time</th><th>User</th><th class="num">Units</th><th>Outcome</th><th>Blocked by</th><th class="num">Account left</th><th class="num">User left</th></tr></thead><tbody id="a-h-rows"></tbody></table>
+      <div class="row" style="margin-top:8px"><button id="a-h-more" class="hidden">Load more</button></div>
+    </div>
+  </section>
+</main>
+
 <!-- ============ API explorer ============ -->
 <main id="tab-api" class="api hidden">
   <section>
@@ -146,8 +230,8 @@ async function api(method, url, body) {
 /* ---------------- tabs ---------------- */
 document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => {
   document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('active', x === b));
-  $('tab-demo').classList.toggle('hidden', b.dataset.tab !== 'demo');
-  $('tab-api').classList.toggle('hidden', b.dataset.tab !== 'api');
+  ['demo', 'app', 'api'].forEach((t) => $('tab-' + t).classList.toggle('hidden', b.dataset.tab !== t));
+  if (b.dataset.tab === 'app') appOpen();
 }));
 
 /* ---------------- guided demo ---------------- */
@@ -386,6 +470,208 @@ function renderIds() {
 
 renderSidebar();
 refresh().catch((e) => ($('acct').textContent = 'error: ' + e.message));
+</script>
+
+<script>
+const SECTIONS = [['account', 'Account'], ['users', 'Users'], ['plans', 'Plans'], ['consume', 'Consume'], ['usage', 'Usage'], ['history', 'History']];
+const A = { plans: [], users: [], usersNext: null, usageNext: null, histNext: null, last: null, section: 'account' };
+
+async function svc(method, path, body, auth = 'key', activate = false) {
+  return api('POST', '/api/proxy', { method, path, auth, rawBody: body === undefined ? '' : JSON.stringify(body), activate });
+}
+const errText = (r) => r.body?.error?.message ?? `HTTP ${r.status}`;
+function msg(ok, text) { const m = $('a-msg'); m.className = 'dec ' + (ok ? 'ok' : 'no'); m.textContent = text; }
+async function act(fn) { try { await fn(); } catch (e) { msg(false, e.message); } }
+const numOrNull = (v) => (String(v).trim() === '' ? null : Number(v));
+const planOpts = (kind, sel) => A.plans.filter((p) => p.kind === kind && (!p.archived || p.id === sel))
+  .map((p) => `<option value="${esc(p.id)}" ${p.id === sel ? 'selected' : ''}>${esc(p.name)}${p.isPredefined ? '' : ' (custom)'}</option>`).join('');
+const userOpts = (all) => (all ? '<option value="">all users</option>' : '') + A.users.map((u) => `<option value="${esc(u.userId)}">${esc(u.userId)}</option>`).join('');
+
+function showSection(name) {
+  A.section = name;
+  document.querySelectorAll('#tab-app [data-sec]').forEach((c) => c.classList.toggle('hidden', c.dataset.sec !== name));
+  $('a-nav').innerHTML = SECTIONS.map(([k, l]) => `<button class="ep ${k === name ? 'active' : ''}" data-s="${k}"><span>${l}</span></button>`).join('');
+  $('a-nav').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { showSection(b.dataset.s); loadSection(); }));
+}
+
+async function loadPlans() {
+  const r = await svc('GET', `/plans?includeArchived=${$('a-p-arch').checked}`);
+  if (r.status !== 200) throw new Error(errText(r));
+  A.plans = r.body.plans;
+}
+async function loadUsers() {
+  A.users = []; A.usersNext = null;
+  await loadMoreUsers();
+}
+async function loadMoreUsers() {
+  const r = await svc('GET', `/users?limit=50${A.usersNext ? '&after=' + encodeURIComponent(A.usersNext) : ''}`);
+  if (r.status !== 200) throw new Error(errText(r));
+  A.users.push(...r.body.users);
+  A.usersNext = r.body.nextCursor;
+}
+
+async function loadSection() {
+  await act(async () => {
+    await loadPlans();
+    if (A.section !== 'plans' && A.section !== 'account') await loadUsers();
+    if (A.section === 'users') await loadUsers();
+    ({ account: renderAccount, users: renderUsers, plans: renderPlans, consume: renderConsume, usage: () => {}, history: renderHistoryFilters })[A.section]();
+    if (A.section === 'account') await renderAccount();
+  });
+}
+function appOpen() { showSection(A.section); loadSection(); }
+
+/* ---------- account ---------- */
+async function renderAccount() {
+  const r = await svc('GET', '/account');
+  if (r.status !== 200) { msg(false, errText(r)); return; }
+  const a = r.body, p = a.plan;
+  $('a-account').innerHTML = `<b>${esc(a.name)}</b> · key starts with <code>${esc(a.apiKeyPrefix)}</code><br>
+    Plan <b>${esc(p.name)}</b>: ${fmt(p.monthlyAllowance)} per month, ${fmt(p.maxUnitsPerRequest)} per request`;
+  $('a-acc-plan').innerHTML = planOpts('account', p.id);
+}
+$('a-acc-change').addEventListener('click', () => act(async () => {
+  const r = await svc('PUT', '/account/plan', { planId: $('a-acc-plan').value });
+  if (r.status !== 200) return msg(false, errText(r));
+  msg(true, `Account plan is now "${r.body.plan.name}". It applies to the next request.`);
+  await renderAccount(); refresh().catch(() => {});
+}));
+$('a-new-go').addEventListener('click', () => act(async () => {
+  const name = $('a-new-name').value.trim();
+  if (!name) return msg(false, 'Enter a company name first.');
+  const r = await svc('POST', '/accounts', { name, planName: $('a-new-plan').value }, 'admin', true);
+  if (r.status !== 201) return msg(false, errText(r));
+  msg(true, `Account "${r.body.name}" created and now active. Its API key was kept on the server.`);
+  $('a-new-name').value = '';
+  await loadPlans(); await renderAccount(); refresh().catch(() => {});
+}));
+
+/* ---------- users ---------- */
+function renderUsers() {
+  $('a-u-plan').innerHTML = planOpts('user');
+  $('a-u-rows').innerHTML = A.users.length ? A.users.map((u) => `<tr>
+    <td>${esc(u.userId)}</td><td>${esc(u.plan.name)}</td>
+    <td><select data-plan-for="${esc(u.userId)}">${planOpts('user', u.plan.id)}</select> <button data-chg="${esc(u.userId)}">Change</button></td>
+    <td><button data-del="${esc(u.userId)}">Delete</button></td></tr>`).join('') : '<tr><td colspan="4" class="muted">No users yet. Register one above.</td></tr>';
+  $('a-u-more').classList.toggle('hidden', !A.usersNext);
+}
+$('a-u-add').addEventListener('click', () => act(async () => {
+  const externalId = $('a-u-id').value.trim();
+  if (!externalId) return msg(false, 'Enter a user id first.');
+  const r = await svc('POST', '/users', { externalId, planId: $('a-u-plan').value });
+  if (r.status !== 201 && r.status !== 200) return msg(false, errText(r));
+  msg(true, r.body.reactivated ? `User "${externalId}" was deleted before: brought back with its old usage.` : `User "${externalId}" registered.`);
+  $('a-u-id').value = '';
+  await loadUsers(); renderUsers(); refresh().catch(() => {});
+}));
+$('a-u-more').addEventListener('click', () => act(async () => { await loadMoreUsers(); renderUsers(); }));
+$('a-u-rows').addEventListener('click', (e) => act(async () => {
+  const chg = e.target.dataset.chg, del = e.target.dataset.del;
+  if (chg) {
+    const planId = document.querySelector(`[data-plan-for="${CSS.escape(chg)}"]`).value;
+    const r = await svc('PUT', `/users/${encodeURIComponent(chg)}/plan`, { planId });
+    if (r.status !== 200) return msg(false, errText(r));
+    msg(true, `${chg} now uses "${r.body.plan.name}". Usage so far is kept.`);
+  } else if (del) {
+    if (!confirm(`Delete user "${del}"? Usage and history are kept.`)) return;
+    const r = await svc('DELETE', `/users/${encodeURIComponent(del)}`);
+    if (r.status !== 204) return msg(false, errText(r));
+    msg(true, `User "${del}" deleted (soft delete).`);
+  } else return;
+  await loadUsers(); renderUsers(); refresh().catch(() => {});
+}));
+
+/* ---------- plans ---------- */
+function renderPlans() {
+  $('a-p-rows').innerHTML = A.plans.map((p) => {
+    const custom = !p.isPredefined && !p.archived;
+    const lim = (field, val) => custom ? `<input type="number" min="${field === 'req' ? 1 : 0}" data-f="${field}" data-id="${esc(p.id)}" value="${val ?? ''}" placeholder="no limit" style="width:100px">` : fmt(val);
+    return `<tr><td>${esc(p.name)} ${p.isPredefined ? '<small class="muted">(predefined, read-only)</small>' : ''}${p.archived ? ' <small class="muted">(archived)</small>' : ''}</td>
+      <td>${esc(p.kind)}</td><td>${lim('month', p.monthlyAllowance)}</td><td>${lim('req', p.maxUnitsPerRequest)}</td>
+      <td>${custom ? `<button data-save="${esc(p.id)}">Save</button> <button data-arch="${esc(p.id)}">Archive</button>` : ''}</td></tr>`;
+  }).join('');
+}
+$('a-p-arch').addEventListener('change', () => act(async () => { await loadPlans(); renderPlans(); }));
+$('a-p-add').addEventListener('click', () => act(async () => {
+  const name = $('a-p-name').value.trim();
+  if (!name) return msg(false, 'Enter a plan name first.');
+  const r = await svc('POST', '/plans', { kind: $('a-p-kind').value, name, monthlyAllowance: numOrNull($('a-p-month').value), maxUnitsPerRequest: numOrNull($('a-p-req').value) });
+  if (r.status !== 201) return msg(false, errText(r));
+  msg(true, `Plan "${name}" created. Assign it from the Users or Account section.`);
+  $('a-p-name').value = ''; $('a-p-month').value = ''; $('a-p-req').value = '';
+  await loadPlans(); renderPlans();
+}));
+$('a-p-rows').addEventListener('click', (e) => act(async () => {
+  const save = e.target.dataset.save, arch = e.target.dataset.arch;
+  if (save) {
+    const get = (f) => document.querySelector(`[data-f="${f}"][data-id="${CSS.escape(save)}"]`).value;
+    const r = await svc('PATCH', `/plans/${save}`, { monthlyAllowance: numOrNull(get('month')), maxUnitsPerRequest: numOrNull(get('req')) });
+    if (r.status !== 200) return msg(false, errText(r));
+    msg(true, `Plan "${r.body.name}" updated. It applies to the next request of everyone using it.`);
+  } else if (arch) {
+    if (!confirm('Archive this plan? Current users keep it, nobody new can get it.')) return;
+    const r = await svc('DELETE', `/plans/${arch}`);
+    if (r.status !== 200) return msg(false, errText(r));
+    msg(true, `Plan "${r.body.name}" archived.`);
+  } else return;
+  await loadPlans(); renderPlans(); refresh().catch(() => {});
+}));
+
+/* ---------- consume ---------- */
+function renderConsume() { $('a-c-user').innerHTML = userOpts(false); }
+async function sendConsume(req) {
+  const r = await svc('POST', '/consume', req);
+  if (r.status !== 200) { $('a-c-out').innerHTML = ''; return msg(false, errText(r)); }
+  $('a-m' + 'sg').className = 'dec hidden';
+  $('a-c-out').innerHTML = decision(r.body) + `<div class="muted">request id: <code>${esc(r.body.requestId)}</code></div>`;
+  A.last = req; $('a-c-again').disabled = false;
+  refresh().catch(() => {});
+}
+$('a-c-go').addEventListener('click', () => act(() => sendConsume({
+  userId: $('a-c-user').value, units: Number($('a-c-units').value), requestId: $('a-c-req').value.trim() || uuid(),
+})));
+$('a-c-again').addEventListener('click', () => act(() => sendConsume(A.last)));
+
+/* ---------- usage ---------- */
+async function loadUsage(append) {
+  const month = $('a-us-month').value;
+  const q = new URLSearchParams({ limit: '20' });
+  if (month) q.set('period', month);
+  if (append && A.usageNext) q.set('after', A.usageNext);
+  const r = await svc('GET', `/usage?${q}`);
+  if (r.status !== 200) return msg(false, errText(r));
+  const b = r.body, a = b.account;
+  const rows = b.users.map((u) => `<tr><td>${esc(u.userId)}${u.deleted ? ' <small class="muted">(deleted)</small>' : ''}</td><td>${esc(u.plan.name)}</td><td class="num">${fmt(u.consumed)}</td><td class="num"><b>${fmt(u.remaining)}</b></td></tr>`).join('');
+  const head = `<div class="big">${fmt(a.remaining)} <span class="muted" style="font-size:14px">remaining for the account in ${esc(b.period)}</span></div>
+    <div class="muted">${fmt(a.consumed)} consumed · plan ${esc(a.plan.name)} (${fmt(a.plan.monthlyAllowance)} per month)</div>`;
+  const table = `<table style="margin-top:8px"><thead><tr><th>User</th><th>Plan</th><th class="num">Consumed</th><th class="num">Remaining</th></tr></thead><tbody id="a-us-rows">${rows}</tbody></table>`;
+  if (append) $('a-us-rows').insertAdjacentHTML('beforeend', rows); else $('a-us-out').innerHTML = head + table;
+  A.usageNext = b.nextCursor;
+  $('a-us-next').classList.toggle('hidden', !A.usageNext);
+}
+$('a-us-go').addEventListener('click', () => act(() => loadUsage(false)));
+$('a-us-next').addEventListener('click', () => act(() => loadUsage(true)));
+
+/* ---------- history ---------- */
+function renderHistoryFilters() { $('a-h-user').innerHTML = userOpts(true); }
+async function loadHistory(append) {
+  const q = new URLSearchParams({ limit: '10' });
+  if ($('a-h-user').value) q.set('userId', $('a-h-user').value);
+  if ($('a-h-acc').value) q.set('accepted', $('a-h-acc').value);
+  if ($('a-h-month').value) q.set('period', $('a-h-month').value);
+  if (append && A.histNext) q.set('cursor', A.histNext);
+  const r = await svc('GET', `/history?${q}`);
+  if (r.status !== 200) return msg(false, errText(r));
+  const rows = r.body.requests.map((h) => `<tr><td>${esc(new Date(h.createdAt).toLocaleString())}</td><td>${esc(h.userId)}</td><td class="num">${fmt(h.units)}</td>
+    <td>${h.accepted ? '<span class="pill s2">accepted</span>' : '<span class="pill s4">rejected</span>'}</td>
+    <td>${h.rejection ? esc(h.rejection.scope + ' · ' + h.rejection.rule) : ''}</td><td class="num">${fmt(h.account.remaining)}</td><td class="num">${fmt(h.user.remaining)}</td></tr>`).join('');
+  if (append) $('a-h-rows').insertAdjacentHTML('beforeend', rows);
+  else $('a-h-rows').innerHTML = rows || '<tr><td colspan="7" class="muted">No requests match.</td></tr>';
+  A.histNext = r.body.nextCursor;
+  $('a-h-more').classList.toggle('hidden', !A.histNext);
+}
+$('a-h-go').addEventListener('click', () => act(() => loadHistory(false)));
+$('a-h-more').addEventListener('click', () => act(() => loadHistory(true)));
 </script>
 </body>
 </html>

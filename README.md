@@ -404,6 +404,8 @@ Current code (month decided at lock time), k6 on the host, 20 VUs for 30 s, ever
 
 A small web page (plain Node, no dependencies) with two tabs: a **Guided demo** and an **API explorer** that can call every endpoint. The browser only talks to the client's own server, which forwards requests to the service with the demo account's key, so the key never reaches the browser.
 
+The Dashboard tab lets you use every endpoint through forms and buttons (accounts, users, plans, consume, usage, history)
+
 ```bash
 docker compose up --build
 open http://localhost:4000      # Windows: start http://localhost:4000
