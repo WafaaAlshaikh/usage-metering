@@ -3,22 +3,27 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Usage Metering Demo</title>
+<title>Usage Metering Console</title>
 <style>
-  :root { --bg:#f6f7f9; --card:#fff; --text:#1c2230; --muted:#667085; --line:#e4e7ec; --ok:#067647; --okbg:#ecfdf3; --no:#b42318; --nobg:#fef3f2; --accent:#2f5bea; }
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1c2230; --muted:#667085; --line:#e4e7ec; --ok:#067647; --okbg:#ecfdf3; --no:#b42318; --nobg:#fef3f2; --warn:#b54708; --warnbg:#fffaeb; --accent:#2f5bea; }
   * { box-sizing: border-box; }
   body { margin:0; font:14px/1.45 system-ui,sans-serif; background:var(--bg); color:var(--text); }
-  header { display:flex; align-items:center; justify-content:space-between; padding:14px 24px; background:var(--card); border-bottom:1px solid var(--line); }
+  header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 24px; background:var(--card); border-bottom:1px solid var(--line); flex-wrap:wrap; }
   header h1 { font-size:17px; margin:0; } header small { color:var(--muted); }
-  main { display:grid; grid-template-columns: 380px 1fr; gap:16px; padding:16px 24px; max-width:1200px; margin:auto; }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .tabs { display:flex; gap:4px; padding:0 24px; background:var(--card); border-bottom:1px solid var(--line); }
+  .tabs button { border:0; border-bottom:2px solid transparent; border-radius:0; padding:10px 14px; background:none; color:var(--muted); font-weight:600; }
+  .tabs button.active { color:var(--accent); border-bottom-color:var(--accent); }
+  main { display:grid; grid-template-columns: 380px 1fr; gap:16px; padding:16px 24px; max-width:1300px; margin:auto; }
+  main.api { grid-template-columns: 290px 1fr; }
+  @media (max-width: 900px) { main, main.api { grid-template-columns: 1fr; } }
+  .hidden { display:none !important; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:16px; }
   .card h2 { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:0 0 10px; }
   button { font:inherit; padding:7px 12px; border:1px solid var(--line); border-radius:7px; background:#fff; cursor:pointer; }
   button:hover { border-color:var(--accent); } button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
   button:disabled { opacity:.5; cursor:wait; }
   .stack { display:flex; flex-direction:column; gap:8px; } .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  select, input { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:7px; min-width:0; }
+  select, input, textarea { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:7px; min-width:0; background:#fff; }
   input[type=number] { width:110px; } label { color:var(--muted); font-size:12px; }
   table { width:100%; border-collapse:collapse; } th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
   th { color:var(--muted); font-weight:500; font-size:12px; } td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
@@ -26,14 +31,37 @@
   .big { font-size:22px; font-weight:600; } .muted { color:var(--muted); }
   .dec { padding:8px 10px; border-radius:8px; margin-bottom:6px; border:1px solid var(--line); } .dec.ok { background:var(--okbg); } .dec.no { background:var(--nobg); }
   .badge { font-weight:700; font-size:11px; letter-spacing:.04em; } .dec.ok .badge { color:var(--ok); } .dec.no .badge { color:var(--no); }
+  /* API explorer */
+  .grp { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:12px 0 4px; }
+  .ep { display:flex; gap:8px; align-items:center; width:100%; text-align:left; border:1px solid transparent; background:none; padding:5px 6px; }
+  .ep.active { background:#eef2ff; border-color:#c7d2fe; }
+  .m { display:inline-block; min-width:52px; text-align:center; font:700 10px/1 ui-monospace,monospace; padding:4px 0; border-radius:4px; color:#fff; }
+  .m.GET { background:#067647; } .m.POST { background:#2f5bea; } .m.PUT { background:#b54708; } .m.PATCH { background:#7a3fd1; } .m.DELETE { background:#b42318; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12.5px; }
+  pre { margin:0; background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; overflow:auto; max-height:420px; white-space:pre-wrap; word-break:break-word; }
+  pre.curl { max-height:none; background:#f1f5f9; color:#334155; }
+  textarea.body { width:100%; min-height:130px; font-family:ui-monospace,Menlo,monospace; font-size:12.5px; }
+  .field { display:flex; gap:8px; align-items:center; } .field label { min-width:110px; } .field input { flex:1; }
+  .pill { font-weight:700; padding:3px 9px; border-radius:99px; font-size:12px; }
+  .pill.s2 { background:var(--okbg); color:var(--ok); } .pill.s4 { background:var(--warnbg); color:var(--warn); } .pill.s5 { background:var(--nobg); color:var(--no); }
+  .chip { display:inline-block; margin:2px 4px 2px 0; padding:2px 8px; border:1px solid var(--line); border-radius:99px; font-size:12px; cursor:pointer; background:#fff; }
+  .chip:hover { border-color:var(--accent); }
+  .logrow { display:flex; gap:8px; padding:4px 0; border-bottom:1px solid var(--line); cursor:pointer; font-size:12.5px; }
+  .logrow:hover { background:#f8fafc; }
 </style>
 </head>
 <body>
 <header>
-  <div><h1>Usage Metering Demo</h1><small id="acct">starting…</small></div>
+  <div><h1>Usage Metering Console</h1><small id="acct">starting…</small></div>
   <button id="reset" title="Creates a brand-new demo account with a new API key">Reset demo</button>
 </header>
-<main>
+<div class="tabs">
+  <button class="active" data-tab="demo">Guided demo</button>
+  <button data-tab="api">API explorer</button>
+</div>
+
+<!-- ============ Guided demo ============ -->
+<main id="tab-demo">
   <section>
     <div class="card">
       <h2>1 · Try the rules</h2>
@@ -41,6 +69,7 @@
         <button data-scn="accepted">alice consumes 10 → accepted</button>
         <button data-scn="user-limit">alice consumes 25 → user limit</button>
         <button data-scn="account-limit">bob consumes 50 until the shared limit stops it</button>
+        <div class="muted">The last button uses up the whole demo account, so it starts a fresh one first.</div>
       </div>
     </div>
     <div class="card">
@@ -80,10 +109,31 @@
     <div class="card"><h2>Recent decisions (from /history)</h2><div id="history"></div></div>
   </section>
 </main>
+
+<!-- ============ API explorer ============ -->
+<main id="tab-api" class="api hidden">
+  <section>
+    <div class="card"><h2>Endpoints</h2><div id="eps"></div></div>
+    <div class="card">
+      <h2>Your IDs <span class="muted" style="text-transform:none;letter-spacing:0">(click to insert)</span></h2>
+      <div class="muted" style="margin-bottom:4px">Users</div><div id="chips-users"></div>
+      <div class="muted" style="margin:8px 0 4px">Plans</div><div id="chips-plans"></div>
+    </div>
+  </section>
+  <section>
+    <div class="card" id="x-form"><div class="muted">Pick an endpoint on the left.</div></div>
+    <div class="card"><h2>Response</h2><div id="x-resp" class="muted">Nothing sent yet.</div></div>
+    <div class="card"><h2>Recent requests</h2><div id="x-log" class="muted">None yet.</div></div>
+  </section>
+</main>
+<datalist id="dl-users"></datalist>
+<datalist id="dl-plans"></datalist>
+
 <script>
 const $ = (id) => document.getElementById(id);
 const fmt = (v) => (v === null || v === undefined ? '∞' : Number(v).toLocaleString());
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2));
 let state = null;
 
 async function api(method, url, body) {
@@ -93,6 +143,14 @@ async function api(method, url, body) {
   return json;
 }
 
+/* ---------------- tabs ---------------- */
+document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('active', x === b));
+  $('tab-demo').classList.toggle('hidden', b.dataset.tab !== 'demo');
+  $('tab-api').classList.toggle('hidden', b.dataset.tab !== 'api');
+}));
+
+/* ---------------- guided demo ---------------- */
 function decision(d) {
   const why = d.accepted ? '' : ` — blocked by the <b>${esc(d.rejection.scope)}</b> rule <b>${esc(d.rejection.rule)}</b>`;
   return `<div class="dec ${d.accepted ? 'ok' : 'no'}"><span class="badge">${d.accepted ? 'ACCEPTED' : 'REJECTED'}</span> ${esc(d.userId)} · ${fmt(d.units)} units${why}<br>
@@ -130,13 +188,14 @@ function render() {
   fillSelect($('s-plan'), state.plans.filter((p) => p.kind === 'user'), (p) => p.name + (p.isPredefined ? ' (predefined)' : ''), (p) => p.id);
   fillSelect($('e-plan'), state.plans.filter((p) => !p.isPredefined), (p) => `${p.name} (${p.kind})`, (p) => p.id);
   fillEditor();
+  renderIds();
 }
 
 async function refresh() { state = await api('GET', '/api/state'); render(); }
 
-const buttons = () => document.querySelectorAll('button');
+const demoButtons = () => document.querySelectorAll('#tab-demo button, #reset');
 async function run(action) {
-  buttons().forEach((b) => (b.disabled = true));
+  demoButtons().forEach((b) => (b.disabled = true));
   try {
     const r = await action();
     if (r) $('last').innerHTML = (r.note ? `<div class="dec">${esc(r.note)}</div>` : '') + (r.decisions ?? []).map(decision).join('');
@@ -144,7 +203,7 @@ async function run(action) {
   } catch (e) {
     $('last').innerHTML = `<div class="dec no"><span class="badge">ERROR</span> ${esc(e.message)}</div>`;
   } finally {
-    buttons().forEach((b) => (b.disabled = false));
+    demoButtons().forEach((b) => (b.disabled = false));
   }
 }
 const num = (id) => ($(id).value.trim() === '' ? null : Number($(id).value));
@@ -165,6 +224,167 @@ $('reset').addEventListener('click', () => run(async () => {
   return { decisions: [], note: 'New demo account created with a fresh API key and nothing consumed.' };
 }));
 
+/* ---------------- API explorer ---------------- */
+const ENDPOINTS = [
+  { g: 'Health', n: 'Health check', m: 'GET', p: '/health', a: 'none' },
+  { g: 'Account', n: 'Create account', m: 'POST', p: '/accounts', a: 'admin', activate: true, b: { name: 'My test account', planName: 'Starter' } },
+  { g: 'Account', n: 'Get my account', m: 'GET', p: '/account' },
+  { g: 'Account', n: 'Change account plan', m: 'PUT', p: '/account/plan', b: { planId: '<account plan id>' } },
+  { g: 'Users', n: 'Register user', m: 'POST', p: '/users', b: { externalId: 'dave' } },
+  { g: 'Users', n: 'List users', m: 'GET', p: '/users', q: 'limit=50' },
+  { g: 'Users', n: 'Get user', m: 'GET', p: '/users/{externalId}' },
+  { g: 'Users', n: 'Change user plan', m: 'PUT', p: '/users/{externalId}/plan', b: { planId: '<user plan id>' } },
+  { g: 'Users', n: 'Delete user (soft)', m: 'DELETE', p: '/users/{externalId}' },
+  { g: 'Plans', n: 'List plans', m: 'GET', p: '/plans', q: 'kind=user' },
+  { g: 'Plans', n: 'Get plan', m: 'GET', p: '/plans/{id}' },
+  { g: 'Plans', n: 'Create plan', m: 'POST', p: '/plans', b: { kind: 'user', name: 'Gold', monthlyAllowance: 2000, maxUnitsPerRequest: 100 } },
+  { g: 'Plans', n: 'Edit plan', m: 'PATCH', p: '/plans/{id}', b: { maxUnitsPerRequest: 50 } },
+  { g: 'Plans', n: 'Archive plan', m: 'DELETE', p: '/plans/{id}' },
+  { g: 'Consume', n: 'Consume units', m: 'POST', p: '/consume', b: { userId: 'alice', units: 10, requestId: '{{uuid}}' } },
+  { g: 'Usage & history', n: 'Usage', m: 'GET', p: '/usage', q: 'limit=50' },
+  { g: 'Usage & history', n: 'History', m: 'GET', p: '/history', q: 'limit=20' },
+];
+const AUTH = { key: 'Active account key', none: 'No key (expect 401)', wrong: 'Wrong key (expect 401)', admin: 'Admin token' };
+let sel = -1, lastField = null, reqLog = [];
+
+function renderSidebar() {
+  let html = '', group = '';
+  ENDPOINTS.forEach((e, i) => {
+    if (e.g !== group) { group = e.g; html += `<div class="grp">${esc(group)}</div>`; }
+    html += `<button class="ep ${i === sel ? 'active' : ''}" data-i="${i}"><span class="m ${e.m}">${e.m}</span><span>${esc(e.n)}</span></button>`;
+  });
+  $('eps').innerHTML = html;
+  $('eps').querySelectorAll('.ep').forEach((b) => b.addEventListener('click', () => pick(Number(b.dataset.i))));
+}
+
+const hasBody = (e) => e.m !== 'GET' && e.m !== 'DELETE';
+const paramsOf = (e) => [...e.p.matchAll(/\{(\w+)\}/g)].map((x) => x[1]);
+
+function pick(i) {
+  sel = i;
+  const e = ENDPOINTS[i];
+  const params = paramsOf(e);
+  $('x-form').innerHTML = `
+    <div class="row" style="margin-bottom:10px"><span class="m ${e.m}">${e.m}</span><code>${esc(e.p)}</code><b style="margin-left:8px">${esc(e.n)}</b></div>
+    <div class="stack">
+      ${params.map((k) => `<div class="field"><label>{${k}}</label><input data-param="${k}" list="${k === 'externalId' ? 'dl-users' : 'dl-plans'}" placeholder="${k === 'externalId' ? 'user id' : 'plan id'}" autocomplete="off"></div>`).join('')}
+      <div class="field"><label>query string</label><input id="x-q" value="${esc(e.q ?? '')}" placeholder="e.g. limit=20&amp;accepted=false"></div>
+      <div class="field"><label>authentication</label><select id="x-auth" style="flex:1">${Object.entries(AUTH).map(([k, v]) => `<option value="${k}" ${k === (e.a ?? 'key') ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+      ${hasBody(e) ? `<div><label>JSON body (sent as typed; <code>{{uuid}}</code> becomes a fresh id on every send; type a fixed value to test retries)</label>
+        <textarea class="body" id="x-body" spellcheck="false">${esc(JSON.stringify(e.b ?? {}, null, 2))}</textarea></div>` : ''}
+      ${e.activate ? `<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="x-activate"> Use the new account as the active account (the demo tab then shows it)</label>` : ''}
+      <div class="row"><button class="primary" id="x-send">Send</button><span class="muted" id="x-err"></span></div>
+      <div><label>equivalent curl (replace $KEY with an API key)</label><pre class="curl" id="x-curl"></pre></div>
+    </div>`;
+  $('x-form').querySelectorAll('input, textarea, select').forEach((el) => {
+    el.addEventListener('focus', () => { lastField = el; });
+    el.addEventListener('input', updateCurl);
+    el.addEventListener('change', updateCurl);
+  });
+  $('x-send').addEventListener('click', send);
+  lastField = null;
+  renderSidebar();
+  updateCurl();
+}
+
+function compose() {
+  const e = ENDPOINTS[sel];
+  let missing = null;
+  let path = e.p.replace(/\{(\w+)\}/g, (_, k) => {
+    const v = $('x-form').querySelector(`[data-param="${k}"]`).value.trim();
+    if (!v) missing = k;
+    return encodeURIComponent(v);
+  });
+  const q = $('x-q').value.trim().replace(/^\?/, '');
+  if (q) path += '?' + q;
+  return { path, missing };
+}
+
+function updateCurl() {
+  if (sel < 0) return;
+  const e = ENDPOINTS[sel], { path } = compose(), auth = $('x-auth').value;
+  const parts = [`curl -s -X ${e.m} "localhost:3000${path}"`];
+  if (auth === 'key') parts.push(`-H "x-api-key: $KEY"`);
+  if (auth === 'wrong') parts.push(`-H "x-api-key: mk_wrong"`);
+  if (auth === 'admin') parts.push(`-H "x-admin-token: dev-admin-token"`);
+  if (hasBody(e)) {
+    let b = $('x-body').value;
+    try { b = JSON.stringify(JSON.parse(b)); } catch { /* keep as typed */ }
+    parts.push(`-H "content-type: application/json"`, `-d '${b.replace(/'/g, "'\\''")}'`);
+  }
+  $('x-curl').textContent = parts.join(' \\\n  ');
+}
+
+function showResponse(r, label) {
+  const cls = r.status >= 500 || r.status === 0 ? 's5' : r.status >= 400 ? 's4' : 's2';
+  const text = r.body === null || r.body === '' ? '(empty body)' : typeof r.body === 'string' ? r.body : JSON.stringify(r.body, null, 2);
+  $('x-resp').innerHTML = `<div class="row" style="margin-bottom:8px"><span class="pill ${cls}">${r.status || 'ERR'}</span>
+    <span class="muted">${esc(label)}</span><span class="muted">· ${r.ms} ms</span>${r.retryAfter ? `<span class="muted">· Retry-After: ${esc(r.retryAfter)}</span>` : ''}${r.activated ? '<span class="muted">· now the active account</span>' : ''}</div>
+    <pre>${esc(text)}</pre>`;
+}
+
+function renderLog() {
+  $('x-log').innerHTML = reqLog.length ? reqLog.map((l, i) => `<div class="logrow" data-i="${i}"><span class="pill ${l.r.status >= 500 || l.r.status === 0 ? 's5' : l.r.status >= 400 ? 's4' : 's2'}">${l.r.status || 'ERR'}</span><code>${esc(l.label)}</code><span class="muted">${l.r.ms} ms</span></div>`).join('') : 'None yet.';
+  $('x-log').querySelectorAll('.logrow').forEach((el) => el.addEventListener('click', () => showResponse(reqLog[el.dataset.i].r, reqLog[el.dataset.i].label)));
+}
+
+async function send() {
+  const e = ENDPOINTS[sel], { path, missing } = compose();
+  $('x-err').textContent = '';
+  if (missing) { $('x-err').textContent = `Fill in {${missing}} first.`; return; }
+  let rawBody = hasBody(e) ? $('x-body').value : '';
+  rawBody = rawBody.replace(/\{\{uuid\}\}/g, uuid());
+  const btn = $('x-send');
+  btn.disabled = true;
+  try {
+    const r = await api('POST', '/api/proxy', {
+      method: e.m, path, auth: $('x-auth').value, rawBody,
+      activate: !!($('x-activate') && $('x-activate').checked),
+    });
+    const label = `${e.m} ${path}`;
+    showResponse(r, label);
+    reqLog.unshift({ label, r });
+    reqLog = reqLog.slice(0, 15);
+    renderLog();
+    if (e.m !== 'GET' || r.activated) await refresh().catch(() => {});
+  } catch (err) {
+    $('x-err').textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* "Your IDs": click a chip to insert the value into the field you were typing in */
+function insertIntoField(value) {
+  const f = lastField;
+  if (f && document.body.contains(f) && (f.tagName === 'INPUT' || f.tagName === 'TEXTAREA') && f.type !== 'checkbox') {
+    if (f.tagName === 'TEXTAREA') {
+      const s = f.selectionStart ?? f.value.length, en = f.selectionEnd ?? s;
+      f.value = f.value.slice(0, s) + value + f.value.slice(en);
+      f.selectionStart = f.selectionEnd = s + value.length;
+    } else {
+      f.value = value;
+    }
+    f.focus();
+    updateCurl();
+  } else if (navigator.clipboard) {
+    navigator.clipboard.writeText(value);
+  }
+}
+
+function renderIds() {
+  if (!state) return;
+  $('dl-users').innerHTML = state.users.map((u) => `<option value="${esc(u.userId)}"></option>`).join('');
+  $('dl-plans').innerHTML = state.plans.map((p) => `<option value="${esc(p.id)}" label="${esc(p.name + ' (' + p.kind + ')')}"></option>`).join('');
+  $('chips-users').innerHTML = state.users.length ? state.users.map((u) => `<span class="chip" data-v="${esc(u.userId)}">${esc(u.userId)}${u.deleted ? ' (deleted)' : ''}</span>`).join('') : '<span class="muted">none</span>';
+  $('chips-plans').innerHTML = state.plans.map((p) => `<span class="chip" data-v="${esc(p.id)}" title="${esc(p.id)}">${esc(p.name)} · ${esc(p.kind)}${p.archived ? ' (archived)' : ''}</span>`).join('');
+  document.querySelectorAll('.chip').forEach((c) => {
+    c.addEventListener('mousedown', (ev) => ev.preventDefault()); // keep focus in the field
+    c.addEventListener('click', () => insertIntoField(c.dataset.v));
+  });
+}
+
+renderSidebar();
 refresh().catch((e) => ($('acct').textContent = 'error: ' + e.message));
 </script>
 </body>

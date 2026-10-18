@@ -56,6 +56,9 @@ const server = createServer(async (req, res) => {
     if (m === 'PATCH' && (match = p.match(/^\/api\/plans\/([0-9a-f-]{36})$/))) {
       return send(res, 200, await demo.updatePlan(match[1], await readJson(req)));
     }
+    if (m === 'POST' && p === '/api/proxy') {
+      return send(res, 200, await demo.proxy(await readJson(req)));
+    }
     return send(res, 404, { error: { code: 'not_found', message: 'Not found' } });
   } catch (err) {
     if (err instanceof demo.ServiceError) return send(res, err.status, err.body);

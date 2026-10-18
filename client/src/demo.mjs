@@ -116,6 +116,9 @@ const FRESH = new Set(['account-limit']);
 export async function scenario(name) {
   if (FRESH.has(name)) await seed();
   const { planIds } = need();
+  if (!planIds) {
+    throw new ServiceError(409, null, 'The active account was created in the API explorer. Press "Reset demo" to get the demo account back.');
+  }
   switch (name) {
     case 'accepted':
       return { decisions: [await consume('alice', 10)] };
@@ -140,5 +143,59 @@ export async function scenario(name) {
     }
     default:
       throw new ServiceError(404, null, `Unknown scenario "${name}"`);
+  }
+}
+
+const ROUTE = /^\/(health|accounts|account|users|plans|consume|usage|history)(\/[^\s\\]*)?(\?[^\s\\]*)?$/;
+
+/**
+ * Sends one request to the metering service on behalf of the API explorer page.
+ * Only the service's own routes are allowed, so this cannot be used to reach anything else.
+ * auth: 'key' (active demo account), 'none', 'wrong' (invalid key), 'admin' (admin token).
+ * rawBody is forwarded as typed, so malformed JSON can be tested too.
+ */
+export async function proxy({ method, path, auth = 'key', rawBody = '', activate = false }) {
+  const m = String(method ?? '').toUpperCase();
+  if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(m)) throw new ServiceError(400, null, 'Unsupported method');
+  if (typeof path !== 'string' || !ROUTE.test(path) || path.includes('..')) {
+    throw new ServiceError(400, null, 'Path is not a route of the metering service');
+  }
+
+  const headers = {};
+  if (auth === 'key') headers['x-api-key'] = need().key;
+  else if (auth === 'wrong') headers['x-api-key'] = 'mk_this-key-does-not-exist';
+  else if (auth === 'admin' && ADMIN_TOKEN) headers['x-admin-token'] = ADMIN_TOKEN;
+
+  const hasBody = m !== 'GET' && typeof rawBody === 'string' && rawBody.trim() !== '';
+  if (hasBody) headers['content-type'] = 'application/json';
+
+  const t0 = performance.now();
+  try {
+    const res = await fetch(`${SERVICE_URL}${path}`, { method: m, headers, body: hasBody ? rawBody : undefined });
+    const text = await res.text();
+    let body = text;
+    try {
+      body = text ? JSON.parse(text) : null;
+    } catch {
+      /* not JSON: show the text as is */
+    }
+    const out = {
+      status: res.status,
+      ms: Math.round(performance.now() - t0),
+      retryAfter: res.headers.get('retry-after'),
+      body,
+    };
+    if (activate && m === 'POST' && path === '/accounts' && res.status === 201 && body?.apiKey) {
+      current = { key: body.apiKey, accountName: body.name, planIds: null };
+      out.activated = true;
+    }
+    return out;
+  } catch (err) {
+    return {
+      status: 0,
+      ms: Math.round(performance.now() - t0),
+      retryAfter: null,
+      body: { error: { code: 'unreachable', message: String(err?.message ?? err) } },
+    };
   }
 }

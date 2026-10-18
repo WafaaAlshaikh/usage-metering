@@ -1,10 +1,89 @@
-# Usage Metering and Quota Service
+<p align="center">
+  <img
+    src="docs/images/account-quota-header.png"
+    width="100%"
+    alt="A shared account quota"
+  >
+</p>
 
-A backend service that other applications call to track usage and decide whether their users may perform an action. Accounts and their users each have a plan; every request must satisfy both.
+<h1 align="center">Usage Metering &amp; Quota Service</h1>
+
+<p align="center">
+  Shared account limits. Individual user quotas. Safe retries.
+</p>
+
+<p align="center">
+  <a href="#example-client">Demo</a> ·
+  <a href="#run-with-docker-compose">Quick Start</a> ·
+  <a href="#interactive-api-documentation">Swagger</a> ·
+  <a href="#api-reference">API Reference</a> ·
+  <a href="#tests">Tests</a> ·
+  <a href="#performance">Performance</a>
+</p>
+
+<p align="center">
+  <img
+    src="docs/images/user-quotas-footer.png"
+    width="100%"
+    alt="Individual user quotas within a shared account"
+  >
+</p>
+
+## Overview
+
+A backend service that applications call to track usage and decide whether a user can perform an action.
+
+Each account has a shared quota, and each user has an individual quota. A request is accepted only when **both plans allow the full amount**. Accepted requests update both usage counters; rejected requests consume nothing.
+
+For example, a document-processing application can check whether a user has enough credits before processing a document, while also enforcing the company's shared monthly allowance.
+
+Plans can be configured through the API without redeploying the service. Usage and decision history are stored in PostgreSQL.
+
+## Engineering Highlights
+
+- **Two-level quota enforcement:** monthly allowances and per-request limits for both accounts and individual users.
+- **Atomic accounting:** account usage, user usage, and the recorded decision are updated in one database transaction.
+- **Safe retries:** repeated request IDs replay the saved decision without consuming units again, even after the user was deleted.
+- **Concurrency protection:** PostgreSQL row locks prevent competing requests from overspending a shared allowance.
+- **Explainable decisions:** the plan limits applied to each decision are preserved, even after plans change.
+- **Verification under load:** automated tests and k6 workloads, followed by a per-account, per-user, per-month consistency check.
+
+<details>
+<summary><strong>Table of Contents</strong></summary>
+
+- [Overview](#overview)
+- [Engineering Highlights](#engineering-highlights)
+- [Stack](#stack)
+- [Model](#model)
+- [Run with Docker Compose](#run-with-docker-compose)
+- [Run locally](#run-locally-without-docker-for-the-service)
+- [Tests](#tests)
+- [How a request is decided](#how-a-request-is-decided)
+- [Interactive API documentation](#interactive-api-documentation)
+- [API reference](#api-reference)
+- [Retries and idempotency](#retries-and-idempotency)
+- [Changing plans and rules](#changing-plans-and-rules)
+- [Main design decisions](#main-design-decisions)
+- [Data model](#data-model)
+- [Product assumptions and decisions](#product-assumptions-and-decisions)
+- [Predefined plans](#predefined-plans)
+- [Performance](#performance)
+- [Known limitations](#known-limitations)
+- [Example client](#example-client)
+- [Project status](#project-status)
+
+</details>
 
 ## Stack
 
-TypeScript, Fastify, PostgreSQL, Drizzle ORM, Zod, Vitest, k6, Docker Compose.
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![Fastify](https://img.shields.io/badge/Fastify-202020?style=for-the-badge&logo=fastify&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
+![Drizzle ORM](https://img.shields.io/badge/Drizzle_ORM-17212B?style=for-the-badge&logo=drizzle&logoColor=C5F74F)
+![Zod](https://img.shields.io/badge/Zod-3E67B1?style=for-the-badge&logo=zod&logoColor=white)
+![Vitest](https://img.shields.io/badge/Vitest-252529?style=for-the-badge&logo=vitest&logoColor=6E9F18)
+![k6](https://img.shields.io/badge/k6-7D64FF?style=for-the-badge&logo=k6&logoColor=white)
+![Docker Compose](https://img.shields.io/badge/Docker_Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 
 ## Model
 
@@ -21,7 +100,7 @@ Account and user plans apply together. A request is accepted only if it satisfie
 docker compose up --build
 ```
 
-This starts PostgreSQL, the service (port 3000) and the example client (port 4000). The service applies the migrations and seeds the predefined plans on start. `ADMIN_TOKEN` defaults to `dev-admin-token` in the Compose file. Data lives in the named volume `pgdata` and survives `docker compose down` and restarts; only `docker compose down -v` deletes it.
+This starts PostgreSQL, the service (port 3000, with Swagger at `/docs/`) and the example client (port 4000). The service applies the migrations and seeds the predefined plans on start. `ADMIN_TOKEN` defaults to `dev-admin-token` in the Compose file. Data lives in the named volume `pgdata` and survives `docker compose down` and restarts; only `docker compose down -v` deletes it.
 
 ```bash
 curl http://localhost:3000/health
@@ -65,9 +144,47 @@ cd service && npm run test:integration
 
 Two rule types exist for both account plans and user plans: a monthly allowance (units per UTC calendar month) and a maximum per request. A request is accepted only if every rule of both plans allows the full amount; a rejection consumes nothing. Accepted units are added to both the user's and the account's usage for the current UTC month.
 
+## Interactive API documentation
+
+When the full service is running, open **http://localhost:3000/docs/** for Swagger UI.
+Every business endpoint is documented, including request constraints, response
+schemas, pagination, errors, and accepted/rejected/replayed consumption examples.
+
+- Download OpenAPI JSON: http://localhost:3000/openapi.json
+- Download OpenAPI YAML: http://localhost:3000/openapi.yaml
+- Import either file into Postman or another OpenAPI-compatible client.
+
+Create an account, save the returned API key, then use **Authorize → ApiKey** and
+paste the raw key (without a `Bearer` prefix). When `ADMIN_TOKEN` is configured,
+use **AdminToken** for account creation. Real keys are never embedded in the
+specification, and Swagger UI does not persist authorization across page reloads.
+The documentation pages themselves are public and need no key.
+
+**Try it out sends real requests.** It can create records, change plans, delete
+users, and consume units. Use a disposable demo account. A quota rejection is
+HTTP 200 with `accepted: false`; it is not a failed HTTP request.
+
+For a documentation-only preview without PostgreSQL:
+
+```bash
+cd service
+npm install
+npm run docs:preview
+```
+
+Open http://localhost:5000/docs/. This mode disables **Try it out** and does not
+start the metering API. It assumes admin-protected provisioning for illustration.
+Run the full service to execute requests; its specification reflects whether
+`ADMIN_TOKEN` is actually configured.
+
+Request schemas are generated from the existing Zod definitions. Response schemas
+and descriptions live in `service/src/http/docs/`; they do not replace runtime
+validation or install response serializers. When changing an endpoint, update its
+documentation and run `npx vitest run tests/unit/docs.test.ts` from `service/`.
+
 ## API reference
 
-Base URL `http://localhost:3000`. All bodies are JSON. Every route except `GET /health` and `POST /accounts` needs the header `x-api-key: <key>`. `POST /accounts` needs `x-admin-token: <ADMIN_TOKEN>` when that variable is set (the Compose file sets `dev-admin-token`).
+Base URL `http://localhost:3000`. All bodies are JSON. Every route except `GET /health`, `POST /accounts` and the documentation pages needs the header `x-api-key: <key>`. `POST /accounts` needs `x-admin-token: <ADMIN_TOKEN>` when that variable is set (the Compose file sets `dev-admin-token`).
 
 The examples use `curl` (on Windows PowerShell write `curl.exe`, and put JSON in a here-string or escape the quotes).
 
@@ -169,7 +286,7 @@ Always `{ "error": { "code": "…", "message": "…", "details": … } }`.
 | 404 | `not_found` | Unknown route, user, or plan (including other accounts' users and plans) |
 | 409 | `idempotency_conflict` | Same `requestId` with a different user or units |
 | 409 | `user_exists`, `plan_archived`, `plan_name_taken` | Conflicts on registration, assignment, naming |
-| 410 | `gone` | The user was deleted |
+| 410 | `gone` | New consumption for a deleted user |
 | 500 | `internal_error` | A bug; details are logged, never returned |
 | 503 | `busy` | Connection pool or row-lock wait timed out under overload. `Retry-After: 1`; retrying with the same `requestId` is safe |
 
@@ -200,7 +317,7 @@ Two rule types, for both account and user plans: `monthly_allowance` (units per 
 - **Correctness through row locks.** Locking the account counter then the user counter inside one transaction makes concurrent decisions exact. The price is that requests of one account run one after another (see Performance); different accounts run in parallel.
 - **A pure decision function.** `domain/rules.ts` has no database or clock, so every rule combination is unit tested directly.
 - **The database enforces ownership.** Plan kind, plan ownership, and "this user belongs to this account" are foreign keys and checks, so a bug in the service cannot create cross-account data. Tests attack these constraints directly.
-- **Layers.** `http/` (routes, validation, auth, error mapping) → `services/` (transactions and business flow) → `repo/` (queries) → `domain/` (pure rules, errors, periods).
+- **Layers.** `http/` (routes, validation, auth, error mapping, OpenAPI docs) → `services/` (transactions and business flow) → `repo/` (queries) → `domain/` (pure rules, errors, periods).
 - **API keys:** 256-bit random, only the SHA-256 hash stored, looked up through a unique index on every request.
 
 ## Data model
@@ -211,7 +328,7 @@ Two rule types, for both account and user plans: `monthly_allowance` (units per 
 - `account_usage` / `user_usage`: consumed units per UTC month (counters, so a decision touches two small rows regardless of history size).
 - `request_log`: every request, accepted or rejected, with the plans and limits that were applied.
 
-The database enforces: plan kinds, plan ownership (an account can only use predefined plans or its own), and that a user and the account in usage and log rows belong together. Checks and foreign keys live in the schema; see the comments in `service/src/db/schema.ts`.
+The database enforces: plan kinds, plan ownership (an account can only use predefined plans or its own), that a user and the account in usage and log rows belong together, and that counters never exceed 2^53 - 1. Checks and foreign keys live in the schema; see the comments in `service/src/db/schema.ts`.
 
 ## Product assumptions and decisions
 
@@ -228,7 +345,7 @@ The database enforces: plan kinds, plan ownership (an account can only use prede
 11. A requestId is unique per account. Retrying the same user and units returns the original decision (`replayed: true`) and counts the units once, even if the user was deleted in between. The same requestId with a different user or amount is rejected with 409.
 12. Each consume runs in one database transaction that locks the account usage row and then the user usage row (always in that order). The decision is made under the locks, so concurrent requests can never exceed an allowance. The cost: requests of one account are processed one after another.
 13. Plans are read after the locks are taken, so a decision uses the plans as they are at decision time, and the request log stores the limits that were applied. A request's plans are fixed when it gets the locks: a plan update that completed before that moment applies to it, one that completes later applies to the next request.
-14. A user that does not exist in the calling account returns 404 (the same answer for another account's user, so nothing leaks). A soft-deleted user returns 410 for new requests.
+14. A user that does not exist in the calling account returns 404 (the same answer for another account's user, so nothing leaks). New consumption for a soft-deleted user returns 410.
 15. API keys are random (256 bits), shown once at account creation, and only their SHA-256 hash is stored. A fast hash is enough because the key cannot be guessed, and it allows looking the account up through a unique index on every request (bcrypt-style salted hashes would not).
 16. Predefined plans are read-only (403 `plan_read_only`). Another account's plan is a 404, the same answer as a plan that does not exist.
 17. "Deleting" a custom plan archives it. Current users keep it, nobody new can get it, and its name stays reserved.
@@ -240,6 +357,7 @@ The database enforces: plan kinds, plan ownership (an account can only use prede
 23. `request_log.created_at` is taken with `clock_timestamp()` while the usage locks are held, so history order equals decision order (`now()` would be the start of the transaction, before waiting for the lock).
 24. When the service is overloaded (no database connection within 5 s, a lock wait over 5 s, or a statement over 15 s) it answers 503 `busy` instead of hanging. Because `requestId` is idempotent, the caller can retry safely.
 25. The month of a request is the month at the moment it is decided (when it holds the usage locks), read from the database clock. A request that waits for a lock across midnight UTC is re-run on the new month's counters, so its counters, response period and history row always agree.
+26. The OpenAPI document is written by hand from the existing Zod request schemas and is used only for documentation; it never validates or serialises live traffic. The documentation pages are public, like `/health`.
 
 ## Predefined plans
 
@@ -279,11 +397,12 @@ Current code (month decided at lock time), k6 on the host, 20 VUs for 30 s, ever
 - All requests of one account serialise on its usage row. That is required for an exact shared allowance and was measured (see Performance).
 - `/usage` computes `remaining` from the current plan limits, also for past months; `/history` has the limits of the time.
 - Migrations run on service start. Starting several instances at the same moment could race; run a single instance, or migrate before scaling out.
+- Swagger "Try it out" and the example client's API explorer send real requests; the client's `/api/proxy` forwards any service route with the demo account's key. They are test tools, not for production.
 - Performance numbers are single runs on a shared laptop; the load generator competes with the service and the database for CPU.
 
 ## Example client
 
-A small web page (plain Node, no dependencies) that calls the service with an account's API key on behalf of three users. The browser only talks to the client's own server, so the API key never reaches it.
+A small web page (plain Node, no dependencies) with two tabs: a **Guided demo** and an **API explorer** that can call every endpoint. The browser only talks to the client's own server, which forwards requests to the service with the demo account's key, so the key never reaches the browser.
 
 ```bash
 docker compose up --build
@@ -299,6 +418,8 @@ Walkthrough:
 3. "bob consumes 50 until the shared limit stops it": his own allowance (500) has room, but the shared account allowance (100) runs out. This button uses up the whole demo account, so it starts a fresh demo account first.
 4. Press **Reset demo**, then "Raise Demo Basic to 50 per request" or "Switch alice to Demo Premium", and run "alice consumes 25" again: it is now accepted, with no change in the client code. Plan changes apply to the current account, so run the alice buttons before and after the change.
 
+In the **API explorer** you can also test error cases: choose "No key" or "Wrong key" to see 401, send a malformed JSON body to see 400, reuse a fixed `requestId` to see a replay, or change the units under the same `requestId` to see 409.
+
 Without Docker: run the service, then `cd client && node src/server.mjs` (set `SERVICE_URL` and `ADMIN_TOKEN` if they differ from the defaults).
 
 ## Project status
@@ -309,5 +430,6 @@ All required parts are implemented:
 - Transactional consumption with PostgreSQL row locking and idempotency.
 - API-key authentication and account-level data isolation.
 - Custom plans, usage tracking, and audit history.
+- Interactive OpenAPI documentation (Swagger UI) for every endpoint.
 - Unit, integration, database constraint, concurrency and overload tests.
 - Docker Compose setup, an example client, and k6 performance tests with a correctness check.

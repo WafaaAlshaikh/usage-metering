@@ -4,6 +4,7 @@ import type { Config } from './config';
 import type { Db } from './db/client';
 import { registerErrorHandler } from './http/errorHandler';
 import { registerRoutes } from './http/routes/index';
+import { registerDocumentation } from './http/docs/register';
 
 export interface AppDeps {
   db: Db;
@@ -15,6 +16,7 @@ export function buildApp({ db, config }: AppDeps): FastifyInstance {
 
   app.decorateRequest('account', null);
   registerErrorHandler(app);
+  registerDocumentation(app, { adminTokenRequired: Boolean(config.ADMIN_TOKEN) });
 
   app.get('/health', async () => {
     await db.execute(sql`select 1`);
