@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="#example-client">Demo</a> ·
+  <a href="docs\images\ClientRecording.mp4">Demo</a> ·
   <a href="#run-with-docker-compose">Quick Start</a> ·
   <a href="#interactive-api-documentation">Swagger</a> ·
   <a href="#api-reference">API Reference</a> ·
@@ -70,7 +70,6 @@ Plans can be configured through the API without redeploying the service. Usage a
 - [Performance](#performance)
 - [Known limitations](#known-limitations)
 - [Example client](#example-client)
-- [Project status](#project-status)
 
 </details>
 
@@ -397,14 +396,12 @@ Current code (month decided at lock time), k6 on the host, 20 VUs for 30 s, ever
 - All requests of one account serialise on its usage row. That is required for an exact shared allowance and was measured (see Performance).
 - `/usage` computes `remaining` from the current plan limits, also for past months; `/history` has the limits of the time.
 - Migrations run on service start. Starting several instances at the same moment could race; run a single instance, or migrate before scaling out.
-- Swagger "Try it out" and the example client's API explorer send real requests; the client's `/api/proxy` forwards any service route with the demo account's key. They are test tools, not for production.
+- Swagger "Try it out" and the example client's Dashboard send real requests; the client's `/api/proxy` forwards any service route with the demo account's key. They are test tools, not for production.
 - Performance numbers are single runs on a shared laptop; the load generator competes with the service and the database for CPU.
 
 ## Example client
 
-A small web page (plain Node, no dependencies) with two tabs: a **Guided demo** and an **API explorer** that can call every endpoint. The browser only talks to the client's own server, which forwards requests to the service with the demo account's key, so the key never reaches the browser.
-
-The Dashboard tab lets you use every endpoint through forms and buttons (accounts, users, plans, consume, usage, history)
+A small web page (plain Node, no dependencies) with two tabs: a **Guided demo** and a **Dashboard** that covers every endpoint through forms and buttons (accounts, users, plans, consume, usage, history) plus a **Checks** section for error cases. The browser only talks to the client's own server, which forwards requests to the service with the demo account's key, so the key never reaches the browser.
 
 ```bash
 docker compose up --build
@@ -415,11 +412,26 @@ On start the client creates a demo account: a small account plan (100 / month, 5
 
 Walkthrough:
 
-1. "alice consumes 10" is accepted.
-2. "alice consumes 25" is rejected by her per-request limit (25 > 20), although both monthly allowances have room.
-3. "bob consumes 50 until the shared limit stops it": his own allowance (500) has room, but the shared account allowance (100) runs out. This button uses up the whole demo account, so it starts a fresh demo account first.
-4. Press **Reset demo**, then "Raise Demo Basic to 50 per request" or "Switch alice to Demo Premium", and run "alice consumes 25" again: it is now accepted, with no change in the client code. Plan changes apply to the current account, so run the alice buttons before and after the change.
+1. **alice consumes 10** is accepted.
 
-In the **API explorer** you can also test error cases: choose "No key" or "Wrong key" to see 401, send a malformed JSON body to see 400, reuse a fixed `requestId` to see a replay, or change the units under the same `requestId` to see 409.
+   ![Accepted](docs/images/demo-1-accepted.png)
+
+2. **alice consumes 25** is rejected by her per-request limit (25 > 20), although both monthly allowances have room.
+
+   ![Rejected by the user limit](docs/images/demo-2-user-limit.png)
+
+3. **Raise "Demo Basic" to 50 per request**, then run "alice consumes 25" again: it is now accepted, with no change in the client code.
+
+   ![Accepted after a plan change](docs/images/demo-3-plan-change.png)
+
+4. **bob consumes 50 until it stops**: his own allowance (500) has room, but the shared account allowance (100) runs out. This button starts a fresh demo account first.
+
+   ![Rejected by the shared account limit](docs/images/demo-4-account-limit.png)
+
+5. Press **Reset demo** (step 4 used up the demo account), open the **Dashboard**, choose **Consume** and then **Send the same request again**: the same decision comes back with `replayed`, and nothing is counted twice.
+
+   ![Replayed request](docs/images/demo-5-replayed.png)
+
+
 
 Without Docker: run the service, then `cd client && node src/server.mjs` (set `SERVICE_URL` and `ADMIN_TOKEN` if they differ from the defaults).
