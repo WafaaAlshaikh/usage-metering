@@ -423,15 +423,3 @@ Walkthrough:
 In the **API explorer** you can also test error cases: choose "No key" or "Wrong key" to see 401, send a malformed JSON body to see 400, reuse a fixed `requestId` to see a replay, or change the units under the same `requestId` to see 409.
 
 Without Docker: run the service, then `cd client && node src/server.mjs` (set `SERVICE_URL` and `ADMIN_TOKEN` if they differ from the defaults).
-
-## Project status
-
-All required parts are implemented:
-
-- Account and user quota enforcement using monthly and per-request limits.
-- Transactional consumption with PostgreSQL row locking and idempotency.
-- API-key authentication and account-level data isolation.
-- Custom plans, usage tracking, and audit history.
-- Interactive OpenAPI documentation (Swagger UI) for every endpoint.
-- Unit, integration, database constraint, concurrency and overload tests.
-- Docker Compose setup, an example client, and k6 performance tests with a correctness check.
