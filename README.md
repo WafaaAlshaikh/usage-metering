@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="docs\images\ClientRecording.mp4">Demo</a> ·
+  <a href="docs\images\demo.mp4">Demo</a> ·
   <a href="#run-with-docker-compose">Quick Start</a> ·
   <a href="#interactive-api-documentation">Swagger</a> ·
   <a href="#api-reference">API Reference</a> ·
