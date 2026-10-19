@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="docs\images\demo.mp4">Demo</a> ·
+  <a href="https://github.com/user-attachments/assets/bd4e4b4d-a2bd-489a-8e7a-6a5dc9a239fb">Demo</a> ·
   <a href="#run-with-docker-compose">Quick Start</a> ·
   <a href="#interactive-api-documentation">Swagger</a> ·
   <a href="#api-reference">API Reference</a> ·
