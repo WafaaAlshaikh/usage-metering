@@ -399,7 +399,7 @@ Current code (month decided at lock time), k6 on the host, 20 VUs for 30 s, ever
 - Swagger "Try it out" and the example client's Dashboard send real requests; the client's `/api/proxy` forwards any service route with the demo account's key. They are test tools, not for production.
 - Performance numbers are single runs on a shared laptop; the load generator competes with the service and the database for CPU.
 
-## Example client
+## Example client <a href="https://github.com/user-attachments/assets/bd4e4b4d-a2bd-489a-8e7a-6a5dc9a239fb">(Demo)</a>
 
 A small web page (plain Node, no dependencies) with two tabs: a **Guided demo** and a **Dashboard** that covers every endpoint through forms and buttons (accounts, users, plans, consume, usage, history) plus a **Checks** section for error cases. The browser only talks to the client's own server, which forwards requests to the service with the demo account's key, so the key never reaches the browser.
 
