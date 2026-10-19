@@ -1,4 +1,3 @@
-/** Errors the API turns into HTTP responses (status + stable machine-readable code). */
 export class AppError extends Error {
   constructor(
     public readonly status: number,
@@ -17,7 +16,6 @@ export class NotFoundError extends AppError {
   }
 }
 
-/** The thing existed but was deleted. */
 export class GoneError extends AppError {
   constructor(message: string, details?: Record<string, unknown>) {
     super(410, 'gone', message, details);
@@ -42,7 +40,6 @@ export class UnauthorizedError extends AppError {
   }
 }
 
-/** Authenticated, but this thing may not be changed (e.g. a predefined plan). */
 export class ForbiddenError extends AppError {
   constructor(code: string, message: string, details?: Record<string, unknown>) {
     super(403, code, message, details);

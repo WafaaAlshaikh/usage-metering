@@ -12,11 +12,7 @@ export interface TestDb {
   close: () => Promise<void>;
 }
 
-/**
- * Gives a test file a clean database: wipes the schema, applies every migration, seeds the
- * predefined plans. Refuses to run unless the database name ends in `_test`, so a wrong
- * TEST_DATABASE_URL can never wipe real data.
- */
+
 export async function setupTestDb(): Promise<TestDb> {
   const dbName = new URL(TEST_DATABASE_URL).pathname.slice(1);
   if (!dbName.endsWith('_test')) {
@@ -37,7 +33,6 @@ export async function setupTestDb(): Promise<TestDb> {
   return { db, pool, close: () => pool.end() };
 }
 
-/** Runs one statement inside a savepoint so a rejected statement does not abort the test's transaction. */
 export async function attempt(client: PoolClient, text: string, params: unknown[] = []) {
   await client.query('savepoint attempt');
   try {

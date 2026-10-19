@@ -75,17 +75,13 @@ export const plans = pgTable(
   'plans',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    // NULL for predefined plans, otherwise the owning account.
     accountId: uuid('account_id').references((): AnyPgColumn => accounts.id),
     kind: planKind('kind').notNull(),
     name: text('name').notNull(),
     monthlyAllowance: bigint('monthly_allowance', { mode: 'number' }),
     maxUnitsPerRequest: bigint('max_units_per_request', { mode: 'number' }),
     isPredefined: boolean('is_predefined').notNull().default(false),
-    // Set when a custom plan is "deleted". Archived plans keep working for whoever already uses
-    // them, keep their history, and cannot be assigned to anyone new (checked by the service).
     archivedAt: timestamp('archived_at', { withTimezone: true }),
-    // account_id, or SYSTEM_OWNER_KEY when account_id is NULL. Computed by the database.
     ownerKey: uuid('owner_key')
       .notNull()
       .generatedAlwaysAs(sql`coalesce(account_id, '${sql.raw(SYSTEM_OWNER_KEY)}'::uuid)`),
@@ -96,7 +92,6 @@ export const plans = pgTable(
       .$onUpdate(() => sql`now()`),
   },
   (t) => [
-    // Targets of the composite foreign keys below.
     unique('plans_id_kind_uq').on(t.id, t.kind),
     unique('plans_id_kind_owner_uq').on(t.id, t.kind, t.ownerKey),
     uniqueIndex('plans_custom_name_uq')
@@ -118,16 +113,11 @@ export const accounts = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     name: text('name').notNull(),
-    // SHA-256 of the API key. The key itself is shown once at creation and never stored.
     // One key per account: rotation / multiple keys are out of scope (see README limitations).
     apiKeyHash: text('api_key_hash').notNull(),
-    // First characters of the key, to help humans recognise which key is which.
     apiKeyPrefix: text('api_key_prefix').notNull(),
     accountPlanId: uuid('account_plan_id').notNull(),
-    // Always 'account'. Together with the composite FK below, the database refuses to assign a
-    // user-kind plan to an account.
     accountPlanKind: planKind('account_plan_kind').notNull().default('account'),
-    // Owner key of the assigned plan: this account's id (custom plan) or SYSTEM_OWNER_KEY.
     accountPlanOwnerKey: uuid('account_plan_owner_key').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -154,22 +144,15 @@ export const users = pgTable(
     accountId: uuid('account_id')
       .notNull()
       .references(() => accounts.id),
-    // The identifier the calling application uses for this user.
     externalId: text('external_id').notNull(),
     userPlanId: uuid('user_plan_id').notNull(),
-    // Always 'user' (see accounts.account_plan_kind).
     userPlanKind: planKind('user_plan_kind').notNull().default('user'),
-    // Owner key of the assigned plan: the user's account id (custom plan) or SYSTEM_OWNER_KEY.
     userPlanOwnerKey: uuid('user_plan_owner_key').notNull(),
-    // Soft delete. The row, its usage and its history stay. The same external_id registering
-    // again re-activates this row (keeps usage), so delete + re-register is not a way to get a
-    // fresh allowance.
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     unique('users_account_external_uq').on(t.accountId, t.externalId),
-    // Target of the composite foreign keys in user_usage and request_log.
     unique('users_id_account_uq').on(t.id, t.accountId),
     index('users_plan_idx').on(t.userPlanId),
     foreignKey({
@@ -191,7 +174,6 @@ export const accountUsage = pgTable(
     accountId: uuid('account_id')
       .notNull()
       .references(() => accounts.id),
-    // First day of the UTC month.
     periodStart: periodColumn('period_start'),
     consumed: bigint('consumed', { mode: 'number' }).notNull().default(0),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -208,8 +190,6 @@ export const userUsage = pgTable(
   'user_usage',
   {
     userId: uuid('user_id').notNull(),
-    // Denormalised so "all users of an account for a month" is a single index scan.
-    // The composite FK below guarantees it is the account this user belongs to.
     accountId: uuid('account_id').notNull(),
     periodStart: periodColumn('period_start'),
     consumed: bigint('consumed', { mode: 'number' }).notNull().default(0),
@@ -235,31 +215,20 @@ export const requestLog = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     accountId: uuid('account_id').notNull(),
     userId: uuid('user_id').notNull(),
-    // Caller-supplied idempotency key, unique per account.
     requestId: text('request_id').notNull(),
     units: bigint('units', { mode: 'number' }).notNull(),
     accepted: boolean('accepted').notNull(),
-    // Set only when rejected: which side and which rule blocked the request.
     rejectedBy: ruleScope('rejected_by'),
     rejectedRule: ruleType('rejected_rule'),
     periodStart: periodColumn('period_start'),
-
-    // Plans in force when the decision was made. The kind columns are constants that, through
-    // the composite FKs below, make the database refuse a user plan as the account plan (or the
-    // other way round). Plan ownership is not repeated here: both ids were read from the
-    // account/user rows, whose own constraints already guarantee it.
     accountPlanId: uuid('account_plan_id').notNull(),
     accountPlanKind: planKind('account_plan_kind').notNull().default('account'),
     userPlanId: uuid('user_plan_id').notNull(),
     userPlanKind: planKind('user_plan_kind').notNull().default('user'),
-    // ...and the limits they had at that moment (NULL = no limit). Plans can be edited later,
-    // so the numbers are copied here to keep every past decision explainable.
     accountMonthlyAllowance: bigint('account_monthly_allowance', { mode: 'number' }),
     accountMaxPerRequest: bigint('account_max_per_request', { mode: 'number' }),
     userMonthlyAllowance: bigint('user_monthly_allowance', { mode: 'number' }),
     userMaxPerRequest: bigint('user_max_per_request', { mode: 'number' }),
-
-    // Remaining monthly allowance right after the decision. NULL = unlimited.
     accountRemainingAfter: bigint('account_remaining_after', { mode: 'number' }),
     userRemainingAfter: bigint('user_remaining_after', { mode: 'number' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

@@ -9,7 +9,6 @@ export const DEFAULT_ACCOUNT_PLAN = 'Starter';
 
 export interface RegisterAccountInput {
   name: string;
-  /** Name of a predefined ACCOUNT plan. Defaults to Starter. */
   planName?: string;
 }
 
@@ -19,7 +18,6 @@ export interface RegisteredAccount {
   apiKeyPrefix: string;
   planId: string;
   createdAt: Date;
-  /** The raw key. Returned exactly once, never stored. */
   apiKey: string;
 }
 
@@ -55,7 +53,6 @@ export async function assignAccountPlan(db: Db, accountId: string, planId: strin
     if (!current) throw new NotFoundError('Account not found');
     const plan = await findAssignablePlan(tx, accountId, planId, 'account');
     if (!plan) throw new NotFoundError('Account plan not found for this account', { planId });
-    // Re-assigning the plan the account already has is harmless even if it was archived since.
     if (plan.archivedAt && plan.id !== current.accountPlanId) {
       throw new ConflictError('plan_archived', 'This plan is archived and cannot be assigned to anyone new', {
         planId: plan.id,

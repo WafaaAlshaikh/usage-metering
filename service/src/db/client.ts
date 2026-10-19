@@ -5,7 +5,6 @@ import * as schema from './schema';
 
 export type Db = NodePgDatabase<typeof schema>;
 
-/** What repository functions accept: the database itself or a transaction on it. */
 export type Executor = PgDatabase<NodePgQueryResultHKT, typeof schema>;
 
 export interface DbHandle {
@@ -21,7 +20,7 @@ export interface DbOptions {
 }
 
 export function createDb(connectionString: string, opts: DbOptions | number = {}): DbHandle {
-  const o: DbOptions = typeof opts === 'number' ? { max: opts } : opts; // number = old signature (pool size)
+  const o: DbOptions = typeof opts === 'number' ? { max: opts } : opts; 
   const pool = new Pool({
     connectionString,
     max: o.max ?? 20,

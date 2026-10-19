@@ -5,8 +5,8 @@ export const planView = (p: Plan) => ({
   id: p.id,
   kind: p.kind,
   name: p.name,
-  monthlyAllowance: p.monthlyAllowance, // null = no limit
-  maxUnitsPerRequest: p.maxUnitsPerRequest, // null = no limit
+  monthlyAllowance: p.monthlyAllowance, 
+  maxUnitsPerRequest: p.maxUnitsPerRequest, 
   isPredefined: p.isPredefined,
   archived: p.archivedAt !== null,
   createdAt: p.createdAt,
@@ -27,7 +27,6 @@ export const accountView = (a: Account, plan: Plan) => ({
   createdAt: a.createdAt,
 });
 
-/** Same shape as the consume response, so a client can reuse its types. */
 export const historyView = (r: RequestLogRow, externalUserId: string) => ({
   requestId: r.requestId,
   userId: externalUserId,

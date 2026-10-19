@@ -2,7 +2,6 @@ import { and, asc, eq, gt, isNull, sql } from 'drizzle-orm';
 import type { Executor } from '../db/client';
 import { plans, users } from '../db/schema';
 
-/** Looks the user up inside the calling account only, so another account's users are invisible. */
 export async function findUserByExternalId(ex: Executor, accountId: string, externalId: string) {
   const [row] = await ex
     .select()
@@ -17,7 +16,6 @@ export async function insertUser(ex: Executor, row: typeof users.$inferInsert) {
   return created!;
 }
 
-/** Re-activates a soft-deleted user (keeps its usage). Optionally moves it to another plan. */
 export async function reactivateUser(
   ex: Executor,
   userId: string,
@@ -57,7 +55,6 @@ export async function findUserWithPlan(ex: Executor, accountId: string, external
   return row ?? null;
 }
 
-/** Active users of one account, ordered by external id; `after` is the last id of the previous page. */
 export async function listUsersWithPlans(ex: Executor, accountId: string, limit: number, after?: string) {
   return ex
     .select({ user: users, plan: plans })

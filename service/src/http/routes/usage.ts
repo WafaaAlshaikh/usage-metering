@@ -6,7 +6,6 @@ import { usageQuery } from '../schemas/usage';
 import { planView } from '../views';
 
 export function usageRoutes(app: FastifyInstance, deps: { db: Db }): void {
-  // ?period=YYYY-MM (default: current UTC month), ?limit, ?after=<last userId of previous page>
   app.get('/usage', async (req) => {
     const q = usageQuery.parse(req.query);
     const periodStart = q.period ?? periodStartOf(new Date());

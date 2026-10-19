@@ -28,7 +28,6 @@ export async function createCustomPlan(db: Db, accountId: string, input: NewPlan
   }
 }
 
-/** The caller's own plan, or a 404 (same answer for another account's plan) / 403 (predefined). */
 async function ownPlanOrThrow(db: Db, accountId: string, planId: string) {
   const plan = await findVisiblePlan(db, accountId, planId);
   if (!plan) throw new NotFoundError('Plan not found', { planId });
@@ -38,7 +37,6 @@ async function ownPlanOrThrow(db: Db, accountId: string, planId: string) {
   return plan;
 }
 
-/** A single UPDATE: consumes in flight see either the old or the new limits, never a mix. */
 export async function updateCustomPlan(db: Db, accountId: string, planId: string, patch: PlanPatch) {
   await ownPlanOrThrow(db, accountId, planId);
   try {
@@ -49,7 +47,6 @@ export async function updateCustomPlan(db: Db, accountId: string, planId: string
   }
 }
 
-/** "Delete" = archive. Safe to repeat. Current users keep the plan; nobody new can get it. */
 export async function archiveCustomPlan(db: Db, accountId: string, planId: string) {
   const plan = await ownPlanOrThrow(db, accountId, planId);
   return (await archivePlanRow(db, planId)) ?? plan;

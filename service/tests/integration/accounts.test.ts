@@ -22,7 +22,7 @@ describe('registerAccount', () => {
     expect(r.apiKeyPrefix).toBe(r.apiKey.slice(0, 8));
     const [row] = await t.db.select().from(accounts).where(eq(accounts.id, r.id));
     expect(row!.apiKeyHash).toBe(hashApiKey(r.apiKey));
-    expect(row!.apiKeyHash).not.toContain(r.apiKey); // only the hash is stored
+    expect(row!.apiKeyHash).not.toContain(r.apiKey); 
   });
 
   it('can start on another predefined account plan', async () => {

@@ -8,8 +8,8 @@ import { TEST_DATABASE_URL, setupTestDb, type TestDb } from '../helpers/test-db'
 const ADMIN = 'test-admin-token';
 const config: Config = { DATABASE_URL: 'unused', PORT: 3000, DB_POOL_MAX: 1, LOG_LEVEL: 'silent', ADMIN_TOKEN: ADMIN };
 
-let t: TestDb; // normal pool: prepares data
-let tiny: ReturnType<typeof createDb>; // one connection, 200 ms to get it
+let t: TestDb; 
+let tiny: ReturnType<typeof createDb>; 
 let app: FastifyInstance;
 let key: string;
 
@@ -36,7 +36,7 @@ afterAll(async () => {
 
 describe('overload', () => {
   it('answers 503 with Retry-After when no database connection is available, and recovers', async () => {
-        const held = await tiny.pool.connect(); // the only connection is busy
+        const held = await tiny.pool.connect(); 
     let res;
     try {
       res = await app.inject({
@@ -52,7 +52,6 @@ describe('overload', () => {
     expect(res.headers['retry-after']).toBe('1');
     expect(res.json().error.code).toBe('busy');
 
-    // The same requestId works once there is capacity, and was not counted before.
     const ok = await app.inject({
       method: 'POST',
       url: '/consume',

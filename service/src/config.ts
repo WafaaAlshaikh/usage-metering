@@ -5,8 +5,6 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   DB_POOL_MAX: z.coerce.number().int().positive().default(20),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
-  // When set, POST /accounts requires `x-admin-token: <ADMIN_TOKEN>`.
-  // When unset, account creation is open (convenient locally, documented in README).
   ADMIN_TOKEN: z.string().min(1).optional(),
 });
 

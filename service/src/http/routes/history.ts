@@ -6,7 +6,6 @@ import { historyQuery } from '../schemas/history';
 import { historyView } from '../views';
 
 export function historyRoutes(app: FastifyInstance, deps: { db: Db }): void {
-  // ?userId ?period=YYYY-MM ?accepted=true|false ?limit ?cursor  (newest first)
   app.get('/history', async (req) => {
     const q = historyQuery.parse(req.query);
     const { items, nextCursor } = await getHistory(deps.db, {

@@ -6,7 +6,6 @@ import { accounts, plans, users } from '../db/schema';
 const userPlan = alias(plans, 'user_plan');
 const accountPlan = alias(plans, 'account_plan');
 
-/** The plan currently assigned to a user and the plan of that user's account, in one query. */
 export async function findPlansForUser(ex: Executor, userId: string) {
   const [row] = await ex
     .select({ userPlan, accountPlan })
@@ -19,10 +18,7 @@ export async function findPlansForUser(ex: Executor, userId: string) {
   return row ?? null;
 }
 
-/**
- * A plan of the given kind that this account may assign: a predefined plan or one of its own.
- * Another account's plan comes back as null, exactly like a plan that does not exist.
- */
+
 export async function findAssignablePlan(ex: Executor, accountId: string, planId: string, kind: 'account' | 'user') {
   const [row] = await ex
     .select()
@@ -44,7 +40,6 @@ export async function findPlanById(ex: Executor, planId: string) {
   return row ?? null;
 }
 
-/** A plan this account can see: predefined or its own (archived included). Others' plans are null. */
 export async function findVisiblePlan(ex: Executor, accountId: string, planId: string) {
   const [row] = await ex
     .select()
@@ -74,7 +69,6 @@ export async function insertPlan(ex: Executor, row: typeof plans.$inferInsert) {
   return created!;
 }
 
-/** updated_at moves through $onUpdate (database clock). Undefined fields are left unchanged. */
 export async function updatePlanRow(
   ex: Executor,
   planId: string,
@@ -90,5 +84,5 @@ export async function archivePlanRow(ex: Executor, planId: string) {
     .set({ archivedAt: sql`now()` })
     .where(and(eq(plans.id, planId), isNull(plans.archivedAt)))
     .returning();
-  return row ?? null; // null = it was already archived
+  return row ?? null; 
 }

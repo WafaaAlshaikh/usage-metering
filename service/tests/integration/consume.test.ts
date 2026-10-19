@@ -133,9 +133,7 @@ describe('idempotency', () => {
     expect(await userConsumed(acc, 'u1')).toBe(10);
     expect(await logCount(acc)).toBe(1);
 
-    // a NEW request for the deleted user is still refused
     await expect(ask(acc, 'u1', 1, { requestId: 'new-one' })).rejects.toBeInstanceOf(GoneError);
-    // and a different amount under the old id is still a conflict, not a replay
     await expect(ask(acc, 'u1', 11, { requestId: 'lost-response' })).rejects.toBeInstanceOf(ConflictError);
   });
 });
@@ -181,19 +179,19 @@ describe('plan changes', () => {
     it('a request that waits for the lock uses the plan as it is when it gets the lock', async () => {
     const acc = await createAccount(t.db, limits(1_000, 100));
     const user = await createUser(t.db, acc, 'u1', limits(100, 20));
-    await ask(acc, 'u1', 1, { requestId: 'warm' }); // creates this month's rows
+    await ask(acc, 'u1', 1, { requestId: 'warm' }); 
 
     const holder = await t.pool.connect();
     await holder.query('begin');
     await holder.query(`select 1 from account_usage where account_id = $1 for update`, [acc]);
 
-    const waiting = ask(acc, 'u1', 30, { requestId: 'waits' }); // 30 > 20: would be rejected under the old plan
+    const waiting = ask(acc, 'u1', 30, { requestId: 'waits' });
     await new Promise((r) => setTimeout(r, 300));
-    await updatePlan(t.db, user.planId, limits(100, 50)); // completes while the request is still waiting
+    await updatePlan(t.db, user.planId, limits(100, 50)); 
     await holder.query('commit');
     holder.release();
 
-    expect((await waiting).accepted).toBe(true); // plans are read AFTER the lock
+    expect((await waiting).accepted).toBe(true); 
   });
 });
 
@@ -233,36 +231,35 @@ describe('months', () => {
   it('a request that waits for the lock across a UTC month change is counted in the NEW month', async () => {
     const acc = await createAccount(t.db, limits(100, 50));
     await createUser(t.db, acc, 'u1', limits(100, 50));
-    await ask(acc, 'u1', 1, { requestId: 'setup', now: new Date('2026-10-15T12:00:00Z') }); // creates the October rows
+    await ask(acc, 'u1', 1, { requestId: 'setup', now: new Date('2026-10-15T12:00:00Z') }); 
 
-    // Hold October's account counter, like a slow request ahead in the queue.
     const holder = await t.pool.connect();
     await holder.query('begin');
     await holder.query(`select 1 from account_usage where account_id = $1 and period_start = '2026-10-01' for update`, [acc]);
 
-    let month = '2026-10-01'; // the "database clock"
+    let month = '2026-10-01'; 
     const waiting = consume(
       t.db,
       { accountId: acc, externalUserId: 'u1', requestId: 'late', units: 7 },
       undefined,
       async () => month,
     );
-    await new Promise((r) => setTimeout(r, 300)); // it is now blocked on October's lock
-    month = '2026-11-01'; // midnight UTC passes while it waits
+    await new Promise((r) => setTimeout(r, 300)); 
+    month = '2026-11-01'; 
     await holder.query('commit');
     holder.release();
 
     const r = await waiting;
     expect(r.accepted).toBe(true);
     expect(r.period).toBe('2026-11');
-    expect(r.account.remaining).toBe(93); // November started from zero: 100 - 7
+    expect(r.account.remaining).toBe(93); 
 
     const rows = await t.pool.query(
       `select to_char(period_start, 'YYYY-MM') as p, consumed from account_usage where account_id = $1 order by period_start`,
       [acc],
     );
     expect(rows.rows.map((x) => [x.p, Number(x.consumed)])).toEqual([
-      ['2026-10', 1], // October untouched by the late request
+      ['2026-10', 1], 
       ['2026-11', 7],
     ]);
     const log = await t.pool.query(

@@ -6,7 +6,6 @@ import { accountView } from '../views';
 import { findPlanById } from '../../repo/plans';
 import { assignPlanBody } from '../schemas/plans';
 
-// Public (admin-token protected when configured): creating an account is how you get a key.
 export function accountsPublicRoutes(
   app: FastifyInstance,
   deps: { db: Db; adminAuth: (req: FastifyRequest) => Promise<void> },

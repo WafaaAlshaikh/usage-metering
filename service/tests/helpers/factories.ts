@@ -27,7 +27,6 @@ export async function updatePlan(db: Db, planId: string, limits: Limits): Promis
     .where(eq(plans.id, planId));
 }
 
-/** An account whose plan is a custom plan with exactly these limits. */
 export async function createAccount(db: Db, limits: Limits): Promise<string> {
   const [starter] = await db
     .select({ id: plans.id })
@@ -49,7 +48,6 @@ export async function createAccount(db: Db, limits: Limits): Promise<string> {
   return accountId;
 }
 
-/** A user of the account with its own custom plan with exactly these limits. */
 export async function createUser(
   db: Db,
   accountId: string,

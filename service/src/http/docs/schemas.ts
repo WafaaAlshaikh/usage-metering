@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import type { OpenAPIV3 } from 'openapi-types';
 
-/** Documentation only: never installed as Fastify validators or serializers. */
 export function schemaOf(value: z.ZodType): OpenAPIV3.SchemaObject {
   return z.toJSONSchema(value, { target: 'openapi-3.0', io: 'input' }) as OpenAPIV3.SchemaObject;
 }

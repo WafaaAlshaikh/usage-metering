@@ -19,14 +19,13 @@ export async function insertRequestLog(ex: Executor, row: typeof requestLog.$inf
 
 export interface HistoryFilter {
   accountId: string;
-  userId?: string | undefined; // internal id
+  userId?: string | undefined; 
   periodStart?: string | undefined;
   accepted?: boolean | undefined;
   before?: { t: string; id: string } | undefined;
   limit: number;
 }
 
-/** Newest first. Keyset pagination on (created_at, id), served by request_log_*_created_idx. */
 export async function listRequestLog(ex: Executor, f: HistoryFilter) {
   return ex
     .select({

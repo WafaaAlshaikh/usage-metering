@@ -34,7 +34,6 @@ export function plansRoutes(app: FastifyInstance, deps: { db: Db }): void {
     return planView(await updateCustomPlan(db, req.account!.id, id, patch));
   });
 
-  // Archive, not hard delete: current users keep it and history stays explainable.
   app.delete('/plans/:id', async (req) => {
     const { id } = planIdParams.parse(req.params);
     return planView(await archiveCustomPlan(db, req.account!.id, id));

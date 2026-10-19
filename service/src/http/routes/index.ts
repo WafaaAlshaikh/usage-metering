@@ -14,7 +14,6 @@ export function registerRoutes(app: FastifyInstance, deps: { db: Db; config: Con
 
   accountsPublicRoutes(app, { db, adminAuth: adminAuth(config.ADMIN_TOKEN) });
 
-  // Everything below needs a valid API key, which also fixes which account is calling.
   app.register(async (authed) => {
     authed.addHook('preHandler', apiKeyAuth(db));
     usersRoutes(authed, { db });

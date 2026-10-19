@@ -16,8 +16,6 @@ export interface HistoryInput {
 export async function getHistory(db: Db, input: HistoryInput) {
   let userId: string | undefined;
   if (input.externalUserId !== undefined) {
-    // Looked up inside the calling account: another account's user is a 404. Deleted users are
-    // fine, their history is preserved.
     const user = await findUserByExternalId(db, input.accountId, input.externalUserId);
     if (!user) throw new NotFoundError(`User "${input.externalUserId}" is not registered for this account`);
     userId = user.id;

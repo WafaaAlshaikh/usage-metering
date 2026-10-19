@@ -11,11 +11,7 @@ export async function getAccountConsumed(ex: Executor, accountId: string, period
   return row?.consumed ?? 0;
 }
 
-/**
- * Users of the account with what they consumed in that month (null = no row = 0), ordered by
- * external id. Active users are always listed; a deleted user is listed only if it has usage in
- * that month, so the listed users add up to the account total.
- */
+
 export async function listUserUsage(
   ex: Executor,
   accountId: string,
