@@ -333,4 +333,29 @@ describe('concurrency', () => {
     expect(await accountConsumed(acc)).toBe(5);
     expect(await logCount(acc)).toBe(1);
   });
+
+    it('plan edits during a burst: every decision used one of the two limit sets and counters match the log', async () => {
+    const acc = await createAccount(t.db, limits(1_000_000, 100));
+    const user = await createUser(t.db, acc, 'u1', limits(100, 10));
+    const edits = (async () => {
+      for (let i = 0; i < 20; i++) {
+        await updatePlan(t.db, user.planId, limits(i % 2 === 0 ? 200 : 100, 10));
+      }
+    })();
+    const burst = Promise.all(Array.from({ length: 100 }, () => ask(acc, 'u1', 5)));
+    await Promise.all([edits, burst]);
+
+    const log = await t.pool.query(
+      `select user_monthly_allowance as allowance from request_log where account_id = $1`,
+      [acc],
+    );
+    expect(log.rows.every((r) => [100, 200].includes(Number(r.allowance)))).toBe(true);
+    const acceptedUnits = await scalar(
+      'select coalesce(sum(units), 0) as v from request_log where account_id = $1 and accepted',
+      [acc],
+    );
+    expect(await userConsumed(acc, 'u1')).toBe(acceptedUnits);
+    expect(await accountConsumed(acc)).toBe(acceptedUnits);
+    expect(acceptedUnits).toBeLessThanOrEqual(200); // never above the highest allowance in force
+  });
 });

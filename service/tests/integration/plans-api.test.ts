@@ -216,6 +216,15 @@ describe('archiving', () => {
     const shown = (await call(a.apiKey, 'GET', '/plans?includeArchived=true')).json().plans as { id: string }[];
     expect(shown.some((p) => p.id === plan.id)).toBe(true);
   });
+
+    it('an archived account plan cannot be newly assigned (409)', async () => {
+    const a = await newAccount('ArchivedAccountPlan');
+    const plan = await newPlan(a.apiKey, { kind: 'account', monthlyAllowance: 500, maxUnitsPerRequest: null });
+    expect((await call(a.apiKey, 'DELETE', `/plans/${plan.id}`)).statusCode).toBe(200);
+    const res = await call(a.apiKey, 'PUT', '/account/plan', { planId: plan.id });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('plan_archived');
+  });
 });
 
 describe('users: list, inspect, delete', () => {
@@ -253,6 +262,16 @@ describe('users: list, inspect, delete', () => {
     expect((await call(b.apiKey, 'GET', '/users/secret')).statusCode).toBe(404);
     expect((await call(b.apiKey, 'DELETE', '/users/secret')).statusCode).toBe(404);
     expect((await call(b.apiKey, 'GET', '/users')).json().users).toHaveLength(0);
+  });
+
+    it('parallel registrations of the same externalId: one wins, the rest get 409', async () => {
+    const a = await newAccount('ParallelReg');
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () => call(a.apiKey, 'POST', '/users', { externalId: 'same' })),
+    );
+    const codes = results.map((r) => r.statusCode);
+    expect(codes.filter((c) => c === 201)).toHaveLength(1);
+    expect(codes.filter((c) => c === 409)).toHaveLength(9);
   });
 });
 

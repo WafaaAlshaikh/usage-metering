@@ -104,6 +104,18 @@ describe('API key validation', () => {
     const res = await call(undefined, 'POST', '/users', { externalId: 'u1' });
     expect(res.statusCode).toBe(401);
   });
+
+    it('a key longer than 200 characters is a 401', async () => {
+    const res = await app.inject({ method: 'GET', url: '/account', headers: { 'x-api-key': 'x'.repeat(201) } });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it.each([{ userId: '' }, { requestId: '' }, { userId: 'x'.repeat(256) }])('rejects %j with 400', async (over) => {
+    const acc = await newAccount(`BadBody-${JSON.stringify(over).length}-${Math.random()}`);
+    await call(acc.apiKey, 'POST', '/users', { externalId: 'u1' });
+    const res = await consume(acc.apiKey, over);
+    expect(res.statusCode).toBe(400);
+  });
 });
 
 describe('consume over HTTP', () => {
